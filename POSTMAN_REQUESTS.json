@@ -1,0 +1,387 @@
+{
+  "info": {
+    "name": "Babyshop Dropshipping API",
+    "description": "Collection complète pour tester l'API de gestion dropshipping",
+    "version": "1.0",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "🏥 Santé API",
+      "item": [
+        {
+          "name": "Health Check",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "http://localhost:3000/api/health",
+              "protocol": "http",
+              "host": ["localhost"],
+              "port": "3000",
+              "path": ["api", "health"]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "👥 Fournisseurs",
+      "item": [
+        {
+          "name": "Lister tous les fournisseurs",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "http://localhost:3000/api/suppliers",
+              "protocol": "http",
+              "host": ["localhost"],
+              "port": "3000",
+              "path": ["api", "suppliers"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Récupérer fournisseur par ID",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "http://localhost:3000/api/suppliers/650001a1b1b2b3b4b5b6b701",
+              "protocol": "http",
+              "host": ["localhost"],
+              "port": "3000",
+              "path": ["api", "suppliers", "650001a1b1b2b3b4b5b6b701"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Créer nouveau fournisseur",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Nouveau Fournisseur\",\n  \"country\": \"France\",\n  \"website\": \"https://exemple.fr\",\n  \"email\": \"contact@exemple.fr\",\n  \"phone\": \"+33 2 00 00 00 00\",\n  \"minOrderValue\": 100,\n  \"leadTime\": {\n    \"min\": 3,\n    \"max\": 5,\n    \"unit\": \"days\"\n  },\n  \"shipping\": {\n    \"countries\": [\"FR\", \"BE\", \"LU\"],\n    \"freeShippingAbove\": 500,\n    \"costPerKg\": 0.85,\n    \"estimatedDays\": 2\n  },\n  \"paymentMethods\": [\"SEPA\", \"Bank Transfer\"],\n  \"supportedCurrencies\": [\"EUR\"],\n  \"isActive\": true\n}"
+            },
+            "url": {
+              "raw": "http://localhost:3000/api/suppliers",
+              "protocol": "http",
+              "host": ["localhost"],
+              "port": "3000",
+              "path": ["api", "suppliers"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Mettre à jour fournisseur",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"minOrderValue\": 150,\n  \"leadTime\": {\n    \"min\": 2,\n    \"max\": 4,\n    \"unit\": \"days\"\n  }\n}"
+            },
+            "url": {
+              "raw": "http://localhost:3000/api/suppliers/650001a1b1b2b3b4b5b6b701",
+              "protocol": "http",
+              "host": ["localhost"],
+              "port": "3000",
+              "path": ["api", "suppliers", "650001a1b1b2b3b4b5b6b701"]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "📦 Produits",
+      "item": [
+        {
+          "name": "Lister tous les produits",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "http://localhost:3000/api/products?page=1&limit=20",
+              "protocol": "http",
+              "host": ["localhost"],
+              "port": "3000",
+              "path": ["api", "products"],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "20"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Récupérer produit avec variantes",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "http://localhost:3000/api/products/650006a1b1b2b3b4b5b6b701/details",
+              "protocol": "http",
+              "host": ["localhost"],
+              "port": "3000",
+              "path": ["api", "products", "650006a1b1b2b3b4b5b6b701", "details"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Créer nouveau produit",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"sku\": \"HYG-NOUVEAU-0001\",\n  \"name\": \"Nouveau Produit Hygiène\",\n  \"slug\": \"nouveau-produit-hygiene\",\n  \"categoryId\": \"650003a1b1b2b3b4b5b6b701\",\n  \"brandId\": \"650002a1b1b2b3b4b5b6b701\",\n  \"description\": \"Description du produit\",\n  \"ageRange\": \"0-3 mois\",\n  \"images\": [\n    \"https://cdn.example.com/products/nouveau.jpg\"\n  ],\n  \"isActive\": true\n}"
+            },
+            "url": {
+              "raw": "http://localhost:3000/api/products",
+              "protocol": "http",
+              "host": ["localhost"],
+              "port": "3000",
+              "path": ["api", "products"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Créer variante de produit",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"sku\": \"HYG-SERUM-0001-PACK10\",\n  \"name\": \"Serum Physiologique - Pack x10\",\n  \"attributes\": [\n    {\n      \"name\": \"Packaging\",\n      \"value\": \"10 unités\"\n    }\n  ],\n  \"costPrice\": 4.00,\n  \"wholeSalePrice\": 6.00,\n  \"recommendedRetailPrice\": 17.99,\n  \"stock\": 500\n}"
+            },
+            "url": {
+              "raw": "http://localhost:3000/api/products/650006a1b1b2b3b4b5b6b701/variants",
+              "protocol": "http",
+              "host": ["localhost"],
+              "port": "3000",
+              "path": ["api", "products", "650006a1b1b2b3b4b5b6b701", "variants"]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "🏭 Produits Fournisseur",
+      "item": [
+        {
+          "name": "Lister produits fournisseur",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "http://localhost:3000/api/supplier-products?supplierId=650001a1b1b2b3b4b5b6b701",
+              "protocol": "http",
+              "host": ["localhost"],
+              "port": "3000",
+              "path": ["api", "supplier-products"],
+              "query": [
+                {
+                  "key": "supplierId",
+                  "value": "650001a1b1b2b3b4b5b6b701"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Ajouter produit fournisseur",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"supplierId\": \"650001a1b1b2b3b4b5b6b701\",\n  \"productId\": \"650006a1b1b2b3b4b5b6b701\",\n  \"supplierSku\": \"SBF-NOUVEAU-100\",\n  \"supplierName\": \"Nouveau produit test\",\n  \"costPrice\": 0.50,\n  \"minOrder\": 10,\n  \"moq\": 10,\n  \"leadTime\": {\n    \"min\": 3,\n    \"max\": 5,\n    \"unit\": \"days\"\n  },\n  \"packaging\": {\n    \"unit\": \"Carton\",\n    \"quantity\": 24\n  },\n  \"available\": true\n}"
+            },
+            "url": {
+              "raw": "http://localhost:3000/api/supplier-products",
+              "protocol": "http",
+              "host": ["localhost"],
+              "port": "3000",
+              "path": ["api", "supplier-products"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Mettre à jour produit fournisseur",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"costPrice\": 0.48,\n  \"available\": false\n}"
+            },
+            "url": {
+              "raw": "http://localhost:3000/api/supplier-products/650008a1b1b2b3b4b5b6b701",
+              "protocol": "http",
+              "host": ["localhost"],
+              "port": "3000",
+              "path": ["api", "supplier-products", "650008a1b1b2b3b4b5b6b701"]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "🔄 Synchronisation WordPress",
+      "item": [
+        {
+          "name": "Synchroniser produit vers WordPress",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "http://localhost:3000/api/sync/product/650006a1b1b2b3b4b5b6b701",
+              "protocol": "http",
+              "host": ["localhost"],
+              "port": "3000",
+              "path": ["api", "sync", "product", "650006a1b1b2b3b4b5b6b701"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Mettre à jour stock WordPress",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"stock\": 250\n}"
+            },
+            "url": {
+              "raw": "http://localhost:3000/api/sync/stock/101",
+              "protocol": "http",
+              "host": ["localhost"],
+              "port": "3000",
+              "path": ["api", "sync", "stock", "101"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Récupérer commandes récentes",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "http://localhost:3000/api/orders/recent?limit=50",
+              "protocol": "http",
+              "host": ["localhost"],
+              "port": "3000",
+              "path": ["api", "orders", "recent"],
+              "query": [
+                {
+                  "key": "limit",
+                  "value": "50"
+                }
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "📊 Dashboard & Analytics",
+      "item": [
+        {
+          "name": "Vue d'ensemble stock",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "http://localhost:3000/api/dashboard/inventory",
+              "protocol": "http",
+              "host": ["localhost"],
+              "port": "3000",
+              "path": ["api", "dashboard", "inventory"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Analyser marges par fournisseur",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "http://localhost:3000/api/dashboard/supplier-margins/650001a1b1b2b3b4b5b6b701",
+              "protocol": "http",
+              "host": ["localhost"],
+              "port": "3000",
+              "path": ["api", "dashboard", "supplier-margins", "650001a1b1b2b3b4b5b6b701"]
+            }
+          },
+          "response": []
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:3000",
+      "type": "string"
+    }
+  ]
+}

@@ -1,0 +1,283 @@
+# ======================================
+# Babyshop Dropshipping - .gitignore
+# ======================================
+
+# ---- CONFIGURATION (SENSIBLE) ----
+.env
+.env.local
+.env.*.local
+.env.production
+
+# ---- NODE.JS ----
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+lerna-debug.log*
+
+# ---- DÉPÔT LOCAL ----
+.npm
+.eslintcache
+
+# ---- LOGS ----
+logs/
+*.log
+*.logs
+*.bak
+*.tmp
+
+# ---- SYSTÈME D'EXPLOITATION ----
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+desktop.ini
+
+# ---- IDE / ÉDITEURS ----
+.vscode/
+.idea/
+*.swp
+*.swo
+*.swn
+*.swj
+*~
+.sublime-project
+.sublime-workspace
+.project
+.settings/
+.classpath
+.c9/
+*.tern-port
+.vscode-test
+
+# ---- EDITOR ----
+.emacs*
+.netrwhist
+*~
+
+# ---- OS ----
+.AppleDouble
+.LSOverride
+Thumbs.db
+.TemporaryItems
+
+# ---- DATABASE ----
+*.sqlite
+*.sqlite3
+*.db
+data/
+databases/
+
+# ---- DOCKER ----
+.docker/
+.dockerignore
+
+# ---- BUILD / DIST ----
+dist/
+build/
+out/
+.cache/
+.parcel-cache
+
+# ---- TESTING ----
+coverage/
+.nyc_output/
+.mocha_tmp/
+__tests__/coverage
+
+# ---- ENVIRONMENT ----
+.env.test.local
+.env.test
+
+# ---- BACKUP ----
+*.bak
+*.backup
+*.tmp
+*.temp
+*~
+
+# ---- ARCHIVES ----
+*.zip
+*.tar
+*.tar.gz
+*.rar
+
+# ---- PASSWORDS & SECRETS ----
+secrets.json
+credentials.json
+.aws/credentials
+.ssh/
+*.pem
+*.key
+*.p8
+
+# ---- MONGODB ----
+dump/
+mongodump/
+.mongodb/
+.mongosh_repl_history
+
+# ---- WORDPRESS / WP ----
+wp-config.php
+wp-content/uploads/
+wp-content/backup-*
+*.sql
+
+# ---- PM2 ----
+pm2.log
+.pm2/
+
+# ---- REDIS ----
+dump.rdb
+appendonly.aof
+
+# ---- SENTRY ----
+.sentry-release
+
+# ---- TYPESCRIPT ----
+*.tsbuildinfo
+
+# ---- MISC ----
+.cache
+dist
+.parcel-cache
+.next
+out
+.turbo
+.tern-port
+
+# ---- OPTIONNEL MAIS RECOMMANDÉ ----
+# Inclure si vous utilisez ces outils:
+
+# VSCode
+.vscode/
+*.code-workspace
+
+# WebStorm
+.idea/
+*.iml
+
+# Sublime Text
+*.sublime-workspace
+*.sublime-project
+
+# Atom
+.atom/
+.atomignore
+
+# Vim
+[._]*.s[a-v][a-z]
+[._]*.sw[a-p]
+[._]s[a-v][a-z]
+[._]sw[a-p]
+Session.vim
+.netrwhist
+*~
+tags
+
+# Emacs
+*~
+\#*\#
+.\#*
+
+# RStudio
+.Rproj.user/
+.Rhistory
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# pyenv
+.python-version
+
+# Environments
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# ---- FICHIERS TEMPORAIRES SPÉCIFIQUES ----
+# Ajouter vos fichiers locaux ici:
+local_config.js
+test_data.json
+*.local.js
+temp/
+debug.log
+
+# ---- BACKUP FICHIERS IMPORTANTS ----
+# Garder sauvegarde locale mais pas en repo:
+backups/
+*.backup
+*.bak
+
+# ---- CERTIFICATS SSL (PRODUCTION) ----
+*.crt
+*.cert
+*.key
+*.pem
+.certs/
+certificates/
+
+# ---- DUMPS DATABASE ----
+*.sql
+*.dump
+mongo_dump/
+mysql_dump/
+
+# ---- FICHIERS DE TEST ----
+test-results/
+test-output/
+.coverage/
+coverage.html
+
+# ---- MAC OS ----
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+.Spotlight-V100
+.Trashes
+
+# ---- LINUX ----
+[._]*.s[a-v][a-z]
+[._]*.sw[a-p]
+*~
+
+# ---- WINDOWS ----
+[Dd]esktop.ini
+$RECYCLE.BIN/
+ehthumbs.db
+Thumbs.db
+
+# ---- AZURE ----
+.env.*.user
+.env.user
+azure-pipelines.yml
+
+# ---- GITHUB ----
+.github/workflows/secrets.yml
+
+# ---- SECRETS FOLDER ----
+secrets/
+.secrets/
+private/
+
+# ====================================
+# FICHIERS À INCLURE (force tracking)
+# ====================================
+# Décommenter pour forcer inclusion:
+
+# !.env.example
+# !.env.test.example
+# !.github/
+# !.gitkeep
+# !IMPORTANT_README.md
