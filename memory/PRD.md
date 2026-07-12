@@ -1,85 +1,106 @@
-# MarcherBien Dropship — PRD
+# EuropaDrop — PRD (v1.1)
 
-## Problem Statement (original, verbatim)
+## Problem Statement (original)
 > "je veux que tu completes les fonctionalité pour que l'aplication fonctionne comme dsers mais en mieux"
 
-## User Choices
-- **Portée** : Backend (FastAPI) enrichi + Frontend React (dashboard complet)
-- **Fournisseurs** : Européens uniquement (France, Belgique, Espagne, Italie) — via API ou import catalogue. Pas d'AliExpress.
-- **Formats import** : CSV, Excel (XLSX), JSON, XML
-- **Fonctionnalités DSers-like activées** : multi-fournisseurs auto-select, règles de tarification, bulk fulfillment, tracking, sync stock, analytics, JWT, notifications
+## User Choices (session 1 + 2)
+- **Portée** : Backend FastAPI + Frontend React
+- **Fournisseurs** : Européens (FR, BE, ES, IT). Pas d'AliExpress.
+- **Formats import** : CSV, XLSX, JSON, XML
+- **Toutes les features DSers** activées
 - **Boutique cible** : WooCommerce uniquement (marcherbien.fr)
-- **IA** : DeepSeek (à ajouter plus tard avec clé — intégration préparée mais non activée)
+- **IA** : DeepSeek (`deepseek-chat`) — clé fournie mais retourne 401 (à renouveler)
+- **Nom de l'app** : **EuropaDrop** (v1.1)
+- **CRON** : sync toutes les **6 heures**
+- **Webhooks WC** : oui, URL/secret exposés
 
 ## Tech Stack
-- **Backend** : FastAPI + Motor (MongoDB) + Pydantic v2 + JWT + Passlib bcrypt + Pandas/openpyxl/xmltodict + HTTPX
-- **Frontend** : React 18 + Tailwind CSS + Phosphor Icons + Recharts + Sonner (toasts) + Axios + React Router
-- **DB** : MongoDB (local via supervisor)
-- **Design** : Swiss & High-Contrast — Cabinet Grotesk (headings), Satoshi (body), IBM Plex Mono (data)
+- **Backend** : FastAPI + Motor (MongoDB) + Pydantic v2 + JWT/bcrypt + Pandas/openpyxl/xmltodict + HTTPX + APScheduler
+- **Frontend** : React 18 + Tailwind + Phosphor Icons + Recharts + Sonner + Axios + React Router
+- **Design** : Swiss & High-Contrast — Cabinet Grotesk / Satoshi / IBM Plex Mono
+- **AI** : DeepSeek (OpenAI-compatible API) — `deepseek-chat`
 
 ## Architecture
-- `/app/backend/server.py` — routes API sous `/api`
-- `/app/backend/models.py` — Pydantic models + PyObjectId
-- `/app/backend/pricing.py` — moteur de règles de prix + auto-sélection fournisseur (cheapest/fastest/most_stock/balanced)
+- `/app/backend/server.py` — routes API `/api`
+- `/app/backend/models.py` — Pydantic + PyObjectId
+- `/app/backend/pricing.py` — moteur règles + auto-sélection fournisseur
 - `/app/backend/catalog_import.py` — parseurs multi-format
 - `/app/backend/woocommerce.py` — client WC REST v3
-- `/app/backend/seed.py` — données de démo (admin, 4 fournisseurs, 10 produits, 14 mappings, 4 commandes, 3 notifs, 1 règle)
-- `/app/frontend/src/pages/*.jsx` — 8 pages (Login, Dashboard, Catalog, Suppliers, ImportCatalog, PricingRules, Orders, WooCommerce, Notifications)
+- `/app/backend/deepseek.py` — client DeepSeek (translation, SEO, smart mapping)
+- `/app/backend/scheduler.py` — APScheduler (sync 6h + import WC 30min)
+- `/app/backend/seed.py` — données de démo
+- `/app/frontend/src/pages/` — 9 pages (Login, Dashboard, Catalog, Suppliers, ImportCatalog, PricingRules, Orders, WooCommerce, Automations, Notifications)
 
-## Features Implemented (Jan 2026)
-### Backend
-- ✅ Auth JWT (register, login, me) — bcrypt
-- ✅ CRUD fournisseurs (avec pays, délai, expédition, note)
-- ✅ CRUD produits (SKU, catégorie, marque, images, agrégats de coût/stock/prix)
-- ✅ Mapping multi-fournisseurs par produit (14 mappings seedés)
-- ✅ Sélection automatique du meilleur fournisseur (4 stratégies)
-- ✅ Règles de tarification (markup %, arrondi, marge min, priorité, filtres catégorie/fournisseur)
-- ✅ Import catalogue multi-format (CSV/XLSX/JSON/XML) avec auto-détection colonnes + coercion
-- ✅ Commandes (CRUD, filtrage, bulk-fulfill avec auto-sélection fournisseur)
-- ✅ Tracking colis + statuts (pending→processing→shipped→delivered)
-- ✅ Sync WooCommerce (produits, stock, orders) — clés marcherbien.fr configurées, fallback mock si injoignable
-- ✅ Notifications (low_stock/order_new/sync_error/price_change)
-- ✅ Dashboard analytics (KPIs, top produits, série temporelle, performance fournisseurs)
-- ✅ Historique des imports
+## Features Implemented
 
-### Frontend
-- ✅ Login page split (form + brand panel dark)
-- ✅ Sidebar dark + top bar avec badge notifications
-- ✅ Dashboard : 4 metrics + revenue chart + top products + supplier performance + low stock
-- ✅ Catalogue : table dense, recherche, filtres catégorie, drawer détail produit avec strategy switcher
-- ✅ Fournisseurs : grille de cartes + modal CRUD
-- ✅ Import catalogue : wizard 4 étapes (fichier → mapping → aperçu → résultat) + historique
-- ✅ Règles de prix : simulateur temps réel + CRUD + apply-all
-- ✅ Commandes : sélection multiple + bulk fulfillment + drawer détail + tracking
-- ✅ WooCommerce : status de connexion + sync produit-par-produit + sync tout
-- ✅ Notifications : liste avec severity colors + mark-read
+### v1.0 (session 1) — Core DSers-like
+- Auth JWT (bcrypt) + admin seedé
+- CRUD fournisseurs (4 UE seedés)
+- CRUD produits (10 seedés) avec agrégats coût/stock/prix
+- Multi-mapping fournisseurs (14 seedés)
+- **Auto-sélection fournisseur** (cheapest/fastest/most_stock/balanced)
+- Règles de tarification (markup, arrondis, marge min, priorité) + simulateur
+- Import catalogue CSV/XLSX/JSON/XML avec auto-mapping colonnes
+- Commandes CRUD + **bulk fulfillment**
+- **Tracking** colis multi-transporteurs
+- Sync WooCommerce produits/stock/commandes
+- Notifications multi-sévérité
+- Dashboard analytics (KPIs, chart 14j, top produits, perf fournisseurs)
 
-## Test Status (iteration_1)
-- **Backend** : 100 % (25/25 pytest tests PASS)
-- **Frontend** : 100 % (tous les flows demandés vérifiés)
-- **Critiques bloquants** : aucun
-- **Mineurs** : bulk-fulfill sans compteur partial-fail (non-bloquant), chart avec 1 seul point car seed dates identiques
+### v1.1 (session 2) — Nouveautés
+- ✅ **Rebrand EuropaDrop** (sidebar, login, titre, PRD)
+- ✅ **Vue produits Importés / Publiés** (3 tabs comme DSers) avec badges "Publié"/"Non publié" + `wpProductId`
+- ✅ **Suivi paiements** : `paymentStatus` (unpaid/paid/refunded/partial_refund) + `paymentMethod` + `paymentReference` + `paidAt`. UI badges + section paiement dans drawer commande.
+- ✅ **DeepSeek AI** :
+  - `POST /api/ai/translate` — traduction FR (EN/ES/IT)
+  - `POST /api/ai/seo-description` — description SEO structurée (titre, meta, description HTML, keywords)
+  - `POST /api/ai/smart-mapping` — mapping intelligent colonnes CSV
+  - `POST /api/ai/bulk-translate-products` — traduction en masse
+  - ⚠️ **Clé DeepSeek fournie renvoie 401** — utilisateur doit renouveler
+- ✅ **Webhooks WooCommerce** :
+  - `POST /api/webhooks/woocommerce/orders` — signature HMAC-SHA256
+  - `GET /api/webhooks/woocommerce/info` — URL + secret + instructions FR
+  - Page **Automatisations** avec Copy buttons
+- ✅ **CRON APScheduler** (toutes les 6h) :
+  - Job 1 : sync produits + push WooCommerce (`stocks_prices_sync`, every 6h)
+  - Job 2 : import commandes WooCommerce (`wc_orders_import`, every 30min)
+  - `POST /api/scheduler/run-now/{job_id}` pour déclenchement manuel
+  - `GET /api/scheduler/status` + `/history`
 
-## Prioritized Backlog (P0 → P2)
-### P1 (améliorations moyennes)
-- Intégration DeepSeek (traduction catalogues EN/ES/IT → FR, descriptions SEO auto, mapping colonnes intelligent) — dès que la clé DeepSeek est fournie
-- Splitter `server.py` en routers (auth/suppliers/products/orders/wc)
-- Compteur de partial-fail sur bulk-fulfill
+## Test Status
+### iteration_1
+- Backend : 25/25 ✅
+- Frontend : 100% ✅
+
+### iteration_2
+- Backend : 15/15 nouveaux tests ✅ + 24/25 regression (1 test non-idempotent, pas de bug)
+- Frontend : 100% ✅
+- DeepSeek : code correct, clé user invalide (401)
+
+## Prioritized Backlog
+
+### P0 (bloquant utilisateur)
+- **Renouveler clé DeepSeek** (utilisateur) — obtenir nouvelle clé sur platform.deepseek.com
+
+### P1 (améliorations)
+- Splitter `server.py` en routers (auth/suppliers/products/orders/wc/ai)
+- Compteur partial-fail sur bulk-fulfill
+- Actions IA en masse depuis catalog (bouton "Traduire tous" / "SEO tous")
 
 ### P2 (nice-to-have)
-- Command palette (Ctrl+K) fonctionnel avec cmdk
+- Command palette Ctrl+K fonctionnel (cmdk)
 - Multi-devise + gestion TVA
 - Export catalogue CSV
-- Webhooks WooCommerce → import commandes auto
-- Sync programmée (CRON stock + prix fournisseurs)
-- Multi-utilisateurs avec rôles (admin/operator)
-- Import via URL/API directe fournisseur (scraper)
+- Multi-utilisateurs avec rôles
+- Import URL fournisseur (scraper direct)
+- Alertes prix concurrents
 
 ## Credentials
 - Admin : `admin@marcherbien.fr` / `Admin1234!`
-- Voir `/app/memory/test_credentials.md`
+- WooCommerce : ck_8e4... / cs_e83... (dans .env)
+- DeepSeek : `sk-5c53750be5d5474ba56b9480094433e6` (invalide — à renouveler)
+- Webhook secret : `europadrop_wh_secret_change_me_2026`
 
 ## Dates
-- **Version** : v1.0.0
-- **Créé** : Jan 2026
-- **Dernière MAJ** : Jan 2026
+- **v1.0** : Jan 2026 (session 1)
+- **v1.1** : Jan 2026 (session 2 — EuropaDrop rebrand + AI + webhooks + CRON)
