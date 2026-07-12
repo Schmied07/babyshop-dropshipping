@@ -1,0 +1,19 @@
+# EuropaDrop — Frontend React + Nginx (build context = racine du repo)
+# Étape 1 : build du bundle React (REACT_APP_BACKEND_URL est injecté au build)
+FROM node:18-alpine AS build
+WORKDIR /app/frontend
+
+COPY frontend/package.json frontend/yarn.lock* ./
+RUN yarn install --frozen-lockfile || yarn install
+
+COPY frontend/ .
+
+ARG REACT_APP_BACKEND_URL
+ENV REACT_APP_BACKEND_URL=$REACT_APP_BACKEND_URL
+RUN yarn build
+
+# Étape 2 : service statique via Nginx (+ reverse-proxy /api -> backend)
+FROM nginx:alpine
+COPY deploy/nginx.conf /etc/nginx/conf.d/default.conf
+COPY --from=build /app/frontend/build /usr/share/nginx/html
+EXPOSE 80

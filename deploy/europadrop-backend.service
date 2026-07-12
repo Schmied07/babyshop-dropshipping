@@ -1,0 +1,25 @@
+# EuropaDrop — service systemd (déploiement SANS Docker)
+# Installation :
+#   sudo cp deploy/europadrop-backend.service /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now europadrop-backend
+#   sudo systemctl status europadrop-backend
+#   journalctl -u europadrop-backend -f      # logs
+
+[Unit]
+Description=EuropaDrop API (FastAPI/uvicorn)
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/var/www/europadrop/backend
+EnvironmentFile=/var/www/europadrop/backend/.env
+# Adaptez le chemin d'uvicorn (which uvicorn). Ex. si venv : /var/www/europadrop/backend/.venv/bin/uvicorn
+ExecStart=/usr/local/bin/uvicorn server:app --host 127.0.0.1 --port 8001 --workers 1
+Restart=always
+RestartSec=3
+User=www-data
+Group=www-data
+
+[Install]
+WantedBy=multi-user.target

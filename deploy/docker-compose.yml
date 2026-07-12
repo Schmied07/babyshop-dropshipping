@@ -1,0 +1,35 @@
+# EuropaDrop — Stack de production (MongoDB = Atlas externe, donc pas de conteneur mongo)
+# Usage : cd deploy && cp .env.example .env  (puis éditez .env) && docker compose up -d --build
+
+services:
+  backend:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.backend
+    container_name: europadrop-backend
+    restart: unless-stopped
+    env_file: .env
+    expose:
+      - "8001"           # interne au réseau docker uniquement
+    networks:
+      - europadrop
+
+  frontend:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.frontend
+      args:
+        REACT_APP_BACKEND_URL: ${REACT_APP_BACKEND_URL}
+    container_name: europadrop-frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    ports:
+      # Exposé seulement en local : le Nginx de l'hôte (+ certbot) gère le HTTPS et proxy vers 8080.
+      - "127.0.0.1:8080:80"
+    networks:
+      - europadrop
+
+networks:
+  europadrop:
+    driver: bridge
