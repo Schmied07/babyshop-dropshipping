@@ -15,6 +15,8 @@ import Automations from "./pages/Automations";
 import ApiKeys from "./pages/ApiKeys";
 import Stores from "./pages/Stores";
 import Users from "./pages/Users";
+import Settings from "./pages/Settings";
+import PriceWatch from "./pages/PriceWatch";
 
 function PrivateRoute({ children }) {
   const { user, loading } = useAuth();
@@ -46,6 +48,8 @@ export default function App() {
           <Route path="/cles-api" element={<PrivateRoute><ApiKeys /></PrivateRoute>} />
           <Route path="/boutiques" element={<PrivateRoute><Stores /></PrivateRoute>} />
           <Route path="/utilisateurs" element={<PrivateRoute><Users /></PrivateRoute>} />
+          <Route path="/reglages" element={<PrivateRoute><Settings /></PrivateRoute>} />
+          <Route path="/veille-prix" element={<PrivateRoute><PriceWatch /></PrivateRoute>} />
           <Route path="/notifications" element={<PrivateRoute><Notifications /></PrivateRoute>} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>

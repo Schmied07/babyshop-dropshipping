@@ -174,6 +174,31 @@ def doc_to_json(doc: dict) -> dict:
     return d
 
 
+# ---------- Ownership scoping (multi-user isolation) ----------
+def scope_q(current: dict, base: Optional[dict] = None) -> dict:
+    """Mongo filter scoped to current user unless admin/api_key (see everything)."""
+    q = dict(base or {})
+    if current.get("role") not in ("admin", "api_key"):
+        q["ownerId"] = current.get("id")
+    return q
+
+
+def set_owner(doc: dict, current: dict) -> dict:
+    if current.get("role") not in ("admin", "api_key"):
+        doc["ownerId"] = current.get("id")
+    return doc
+
+
+async def owned_ids_set(current: dict, collection):
+    """Set of owned document ids (str) for a collection, or None if admin (all)."""
+    if current.get("role") in ("admin", "api_key"):
+        return None
+    ids = set()
+    async for d in collection.find({"ownerId": current.get("id")}, {"_id": 1}):
+        ids.add(str(d["_id"]))
+    return ids
+
+
 async def load_active_pricing_rules() -> List[PricingRule]:
     rules = []
     async for r in db.pricing_rules.find({"isActive": True}):
@@ -326,9 +351,9 @@ async def list_products(
     page: int = 1, limit: int = 50, q: Optional[str] = None,
     category: Optional[str] = None,
     sync_status: Optional[str] = None,  # 'imported' | 'published' | 'not_published'
-    _=Depends(get_current_user),
+    current=Depends(get_current_user),
 ):
-    filt: dict = {}
+    filt: dict = scope_q(current)
     if q:
         filt["$or"] = [{"name": {"$regex": q, "$options": "i"}}, {"sku": {"$regex": q, "$options": "i"}}]
     if category:
@@ -371,12 +396,15 @@ async def list_products(
 
 
 @app.get("/api/products/stats")
-async def products_stats(_=Depends(get_current_user)):
-    total = await db.products.count_documents({})
-    active = await db.products.count_documents({"isActive": True})
+async def products_stats(current=Depends(get_current_user)):
+    q = scope_q(current)
+    total = await db.products.count_documents(q)
+    active = await db.products.count_documents({**q, "isActive": True})
+    owned = await owned_ids_set(current, db.products)
     synced_ids = set()
     async for m in db.product_mappings.find({"lastSyncStatus": {"$in": ["success", "mocked"]}}):
-        synced_ids.add(m["internalProductId"])
+        if owned is None or m["internalProductId"] in owned:
+            synced_ids.add(m["internalProductId"])
     published = len(synced_ids)
     return {
         "total": total,
@@ -387,8 +415,8 @@ async def products_stats(_=Depends(get_current_user)):
 
 
 @app.get("/api/products/{pid}")
-async def get_product(pid: str, _=Depends(get_current_user)):
-    doc = await db.products.find_one({"_id": oid(pid)})
+async def get_product(pid: str, current=Depends(get_current_user)):
+    doc = await db.products.find_one({**scope_q(current), "_id": oid(pid)})
     if not doc:
         raise HTTPException(404, "Produit non trouvé")
     sps = await db.supplier_products.find({"productId": pid}).to_list(None)
@@ -412,8 +440,8 @@ async def get_product(pid: str, _=Depends(get_current_user)):
 
 
 @app.post("/api/products")
-async def create_product(payload: Product, _=Depends(get_current_user)):
-    doc = payload.to_mongo()
+async def create_product(payload: Product, current=Depends(get_current_user)):
+    doc = set_owner(payload.to_mongo(), current)
     doc["createdAt"] = utc_now()
     r = await db.products.insert_one(doc)
     doc["_id"] = r.inserted_id
@@ -421,16 +449,17 @@ async def create_product(payload: Product, _=Depends(get_current_user)):
 
 
 @app.put("/api/products/{pid}")
-async def update_product(pid: str, payload: dict, _=Depends(get_current_user)):
-    await db.products.update_one({"_id": oid(pid)}, {"$set": payload})
+async def update_product(pid: str, payload: dict, current=Depends(get_current_user)):
+    payload.pop("ownerId", None)
+    await db.products.update_one({**scope_q(current), "_id": oid(pid)}, {"$set": payload})
     await refresh_product_aggregates(pid)
     doc = await db.products.find_one({"_id": oid(pid)})
     return doc_to_json(doc)
 
 
 @app.delete("/api/products/{pid}")
-async def delete_product(pid: str, _=Depends(get_current_user)):
-    await db.products.delete_one({"_id": oid(pid)})
+async def delete_product(pid: str, current=Depends(get_current_user)):
+    await db.products.delete_one({**scope_q(current), "_id": oid(pid)})
     await db.supplier_products.delete_many({"productId": pid})
     return {"success": True}
 
@@ -576,11 +605,12 @@ class CatalogImportPayload(BaseModel):
 
 
 @app.post("/api/catalog/import")
-async def catalog_import(payload: CatalogImportPayload, _=Depends(get_current_user)):
-    return await _do_catalog_import(payload)
+async def catalog_import(payload: CatalogImportPayload, current=Depends(get_current_user)):
+    owner = current.get("id") if current.get("role") not in ("admin", "api_key") else None
+    return await _do_catalog_import(payload, owner)
 
 
-async def _do_catalog_import(payload: CatalogImportPayload):
+async def _do_catalog_import(payload: CatalogImportPayload, owner_id: Optional[str] = None):
     """Import rows for a supplier. Creates products if missing, updates supplier_products."""
     supplier = await db.suppliers.find_one({"_id": oid(payload.supplierId)})
     if not supplier:
@@ -613,6 +643,7 @@ async def _do_catalog_import(payload: CatalogImportPayload):
                     "sku": internal_sku, "name": name, "category": category, "brand": brand,
                     "description": row.get("description", ""), "images": [], "isActive": True,
                     "stock": 0, "costPrice": 0, "retailPrice": 0, "createdAt": utc_now(),
+                    **({"ownerId": owner_id} if owner_id else {}),
                 }
                 r = await db.products.insert_one(doc)
                 pid = str(r.inserted_id)
@@ -657,7 +688,7 @@ async def catalog_import_file(
     file: UploadFile = File(...),
     supplierId: str = Form(...),
     mapping: str = Form(...),
-    _=Depends(get_current_user),
+    current=Depends(get_current_user),
 ):
     """Import full catalog file directly (parses server-side)."""
     import json as _json
@@ -680,7 +711,8 @@ async def catalog_import_file(
         supplierId=supplierId, filename=name, format=fmt,
         mapping=mapping_dict, rows=rows,
     )
-    return await _do_catalog_import(payload)
+    owner = current.get("id") if current.get("role") not in ("admin", "api_key") else None
+    return await _do_catalog_import(payload, owner)
 
 
 @app.get("/api/catalog/history")
@@ -691,8 +723,8 @@ async def import_history(_=Depends(get_current_user)):
 
 # ========== ORDERS ==========
 @app.get("/api/orders")
-async def list_orders(status: Optional[str] = None, _=Depends(get_current_user)):
-    filt = {}
+async def list_orders(status: Optional[str] = None, current=Depends(get_current_user)):
+    filt = scope_q(current)
     if status:
         filt["status"] = status
     docs = await db.orders.find(filt).sort("createdAt", -1).to_list(None)
@@ -700,15 +732,16 @@ async def list_orders(status: Optional[str] = None, _=Depends(get_current_user))
 
 
 @app.get("/api/orders/{oid_}")
-async def get_order(oid_: str, _=Depends(get_current_user)):
-    doc = await db.orders.find_one({"_id": oid(oid_)})
+async def get_order(oid_: str, current=Depends(get_current_user)):
+    doc = await db.orders.find_one({**scope_q(current), "_id": oid(oid_)})
     if not doc:
         raise HTTPException(404, "Commande non trouvée")
     return doc_to_json(doc)
 
 
 @app.post("/api/orders")
-async def create_order(payload: dict, _=Depends(get_current_user)):
+async def create_order(payload: dict, current=Depends(get_current_user)):
+    set_owner(payload, current)
     payload["createdAt"] = utc_now()
     payload["updatedAt"] = utc_now()
     if "orderNumber" not in payload:
@@ -720,9 +753,10 @@ async def create_order(payload: dict, _=Depends(get_current_user)):
 
 
 @app.put("/api/orders/{oid_}")
-async def update_order(oid_: str, payload: dict, _=Depends(get_current_user)):
+async def update_order(oid_: str, payload: dict, current=Depends(get_current_user)):
+    payload.pop("ownerId", None)
     payload["updatedAt"] = utc_now()
-    await db.orders.update_one({"_id": oid(oid_)}, {"$set": payload})
+    await db.orders.update_one({**scope_q(current), "_id": oid(oid_)}, {"$set": payload})
     doc = await db.orders.find_one({"_id": oid(oid_)})
     return doc_to_json(doc)
 
@@ -932,10 +966,10 @@ async def woo_orders(limit: int = 20, _=Depends(get_current_user)):
 
 # ========== NOTIFICATIONS ==========
 @app.get("/api/notifications")
-async def list_notifications(unread_only: bool = False, _=Depends(get_current_user)):
-    filt = {"read": False} if unread_only else {}
+async def list_notifications(unread_only: bool = False, current=Depends(get_current_user)):
+    filt = scope_q(current, {"read": False}) if unread_only else scope_q(current)
     docs = await db.notifications.find(filt).sort("createdAt", -1).limit(50).to_list(None)
-    unread = await db.notifications.count_documents({"read": False})
+    unread = await db.notifications.count_documents(scope_q(current, {"read": False}))
     return {"success": True, "unread": unread, "data": [doc_to_json(d) for d in docs]}
 
 
@@ -953,7 +987,7 @@ async def mark_all_read(_=Depends(get_current_user)):
 
 # ========== DASHBOARD & ANALYTICS ==========
 @app.get("/api/dashboard/overview")
-async def dashboard_overview(_=Depends(get_current_user)):
+async def dashboard_overview(current=Depends(get_current_user)):
     total_products = await db.products.count_documents({})
     total_suppliers = await db.suppliers.count_documents({"isActive": True})
     total_orders = await db.orders.count_documents({})
@@ -965,8 +999,8 @@ async def dashboard_overview(_=Depends(get_current_user)):
     margin = revenue - cost
     margin_percent = (margin / revenue * 100) if revenue > 0 else 0
 
-    low_stock = await db.products.find({"stock": {"$lt": 10}}).to_list(None)
-    unread_notifs = await db.notifications.count_documents({"read": False})
+    low_stock = await db.products.find({**scope_q(current), "stock": {"$lt": 10}}).to_list(None)
+    unread_notifs = await db.notifications.count_documents(scope_q(current, {"read": False}))
 
     # Top products by quantity in orders
     top_map: dict = {}
@@ -1434,8 +1468,8 @@ class StoreCreate(BaseModel):
 
 
 @app.get("/api/stores")
-async def list_stores(_=Depends(get_current_user)):
-    docs = await db.stores.find().sort("createdAt", -1).to_list(None)
+async def list_stores(current=Depends(get_current_user)):
+    docs = await db.stores.find(scope_q(current)).sort("createdAt", -1).to_list(None)
     result = []
     for d in docs:
         j = doc_to_json(d)
@@ -1449,20 +1483,20 @@ async def list_stores(_=Depends(get_current_user)):
 
 
 @app.post("/api/stores")
-async def create_store(payload: StoreCreate, _=Depends(get_current_user)):
+async def create_store(payload: StoreCreate, current=Depends(get_current_user)):
     # Test creds (non-blocking — save with warning if fail)
     test = await wc.test_connection({"url": payload.url.rstrip("/"), "key": payload.key, "secret": payload.secret})
 
     if payload.isDefault:
-        await db.stores.update_many({}, {"$set": {"isDefault": False}})
-    doc = {
+        await db.stores.update_many(scope_q(current), {"$set": {"isDefault": False}})
+    doc = set_owner({
         "name": payload.name, "url": payload.url.rstrip("/"),
         "key": payload.key, "secret": payload.secret,
         "isDefault": payload.isDefault, "isActive": payload.isActive,
         "createdAt": utc_now(), "lastTestedAt": utc_now(),
         "lastTestStatus": "success" if test["reachable"] else "error",
         "lastTestError": test.get("error"),
-    }
+    }, current)
     r = await db.stores.insert_one(doc)
     return {
         "success": True, "id": str(r.inserted_id), "test": test,
@@ -1471,17 +1505,18 @@ async def create_store(payload: StoreCreate, _=Depends(get_current_user)):
 
 
 @app.put("/api/stores/{sid}")
-async def update_store(sid: str, payload: dict, _=Depends(get_current_user)):
+async def update_store(sid: str, payload: dict, current=Depends(get_current_user)):
+    payload.pop("ownerId", None)
     if payload.get("isDefault"):
-        await db.stores.update_many({}, {"$set": {"isDefault": False}})
+        await db.stores.update_many(scope_q(current), {"$set": {"isDefault": False}})
     payload["updatedAt"] = utc_now()
-    await db.stores.update_one({"_id": oid(sid)}, {"$set": payload})
+    await db.stores.update_one({**scope_q(current), "_id": oid(sid)}, {"$set": payload})
     return {"success": True}
 
 
 @app.post("/api/stores/{sid}/test")
-async def test_store(sid: str, _=Depends(get_current_user)):
-    s = await db.stores.find_one({"_id": oid(sid)})
+async def test_store(sid: str, current=Depends(get_current_user)):
+    s = await db.stores.find_one({**scope_q(current), "_id": oid(sid)})
     if not s:
         raise HTTPException(404, "Boutique non trouvée")
     result = await wc.test_connection({"url": s["url"], "key": s["key"], "secret": s["secret"]})
@@ -1599,6 +1634,250 @@ async def scheduler_run_now(job_id: str, _=Depends(get_current_user)):
 async def scheduler_history(_=Depends(get_current_user)):
     docs = await db.sync_jobs.find().sort("createdAt", -1).limit(20).to_list(None)
     return {"success": True, "data": [doc_to_json(d) for d in docs]}
+
+
+# ========== PER-STORE ANALYTICS (CA / marge séparés) ==========
+@app.get("/api/dashboard/store-analytics")
+async def store_analytics(current=Depends(get_current_user)):
+    stores = await db.stores.find(scope_q(current)).sort("createdAt", -1).to_list(None)
+    products = {}
+    async for p in db.products.find(scope_q(current)):
+        products[str(p["_id"])] = p
+    orders = await db.orders.find(scope_q(current)).to_list(None)
+
+    def _order_cost(o):
+        return sum(i.get("supplierCost", 0) * i.get("quantity", 1) for i in o.get("items", []))
+
+    result = []
+    for s in stores:
+        sid = str(s["_id"])
+        pub_pids = []
+        async for m in db.product_mappings.find({"storeId": sid, "lastSyncStatus": {"$in": ["success", "mocked"]}}):
+            if m["internalProductId"] in products:
+                pub_pids.append(m["internalProductId"])
+        catalog_value = sum(products[p].get("retailPrice", 0) for p in pub_pids)
+        catalog_cost = sum(products[p].get("costPrice", 0) for p in pub_pids)
+        s_orders = [o for o in orders if o.get("storeId") == sid]
+        revenue = sum(o.get("total", 0) for o in s_orders)
+        cost = sum(_order_cost(o) for o in s_orders)
+        result.append({
+            "storeId": sid, "storeName": s.get("name"), "url": s.get("url"),
+            "isActive": s.get("isActive", True),
+            "publishedCount": len(pub_pids),
+            "catalogValue": round(catalog_value, 2), "catalogCost": round(catalog_cost, 2),
+            "catalogMargin": round(catalog_value - catalog_cost, 2),
+            "orderCount": len(s_orders), "revenue": round(revenue, 2),
+            "cost": round(cost, 2), "margin": round(revenue - cost, 2),
+            "marginPercent": round((revenue - cost) / revenue * 100, 1) if revenue > 0 else 0,
+        })
+    unattributed = [o for o in orders if not o.get("storeId")]
+    if unattributed:
+        revenue = sum(o.get("total", 0) for o in unattributed)
+        cost = sum(_order_cost(o) for o in unattributed)
+        result.append({
+            "storeId": None, "storeName": "Non attribuée", "url": None, "isActive": True,
+            "publishedCount": 0, "catalogValue": 0, "catalogCost": 0, "catalogMargin": 0,
+            "orderCount": len(unattributed), "revenue": round(revenue, 2),
+            "cost": round(cost, 2), "margin": round(revenue - cost, 2),
+            "marginPercent": round((revenue - cost) / revenue * 100, 1) if revenue > 0 else 0,
+        })
+    return {"success": True, "data": result}
+
+
+# ========== BULK AI ACTIONS (from catalog) ==========
+class BulkAIPayload(BaseModel):
+    productIds: List[str]
+    action: str = "translate"  # translate | seo | both
+
+
+@app.post("/api/ai/bulk-action")
+async def ai_bulk_action(payload: BulkAIPayload, current=Depends(get_current_user)):
+    if not deepseek.is_configured():
+        return {
+            "success": False, "configured": False, "updated": 0, "results": [],
+            "message": "Clé IA (DeepSeek) non configurée. Renseignez DEEPSEEK_API_KEY pour activer les actions IA en masse.",
+        }
+    q = scope_q(current)
+    results, updated = [], 0
+    for pid in payload.productIds:
+        try:
+            prod = await db.products.find_one({**q, "_id": oid(pid)})
+            if not prod:
+                results.append({"productId": pid, "status": "not_found"})
+                continue
+            update = {}
+            if payload.action in ("translate", "both"):
+                update["name"] = await deepseek.translate_to_french(prod.get("name", ""))
+                if prod.get("description"):
+                    update["description"] = await deepseek.translate_to_french(prod.get("description", ""))
+            if payload.action in ("seo", "both"):
+                seo = await deepseek.generate_seo_description(
+                    prod.get("name", ""), prod.get("category", "") or "", prod.get("brand", "") or "")
+                update["seoTitle"] = seo.get("seo_title")
+                update["metaDescription"] = seo.get("meta_description")
+                update["description"] = seo.get("description")
+                update["keywords"] = seo.get("keywords", [])
+            await db.products.update_one({"_id": oid(pid)}, {"$set": update})
+            updated += 1
+            results.append({"productId": pid, "status": "ok"})
+        except Exception as e:
+            results.append({"productId": pid, "status": "error", "error": str(e)})
+    return {"success": True, "configured": True, "updated": updated, "results": results}
+
+
+# ========== BULK PUBLISH (Publier vers X boutiques en 1 clic) ==========
+class BulkPublishPayload(BaseModel):
+    productIds: List[str]
+    storeIds: List[str] = []  # empty = all active stores of the user
+
+
+@app.post("/api/woocommerce/bulk-publish")
+async def bulk_publish(payload: BulkPublishPayload, current=Depends(get_current_user)):
+    q = scope_q(current)
+    if payload.storeIds:
+        store_ids = payload.storeIds
+    else:
+        store_ids = [str(s["_id"]) async for s in db.stores.find(scope_q(current, {"isActive": True}))]
+        if not store_ids:
+            store_ids = [None]  # legacy env store fallback
+    summary = {"products": len(payload.productIds), "stores": len(store_ids),
+               "published": 0, "failed": 0, "details": []}
+    for pid in payload.productIds:
+        prod = await db.products.find_one({**q, "_id": oid(pid)})
+        if not prod:
+            summary["failed"] += 1
+            continue
+        for sid in store_ids:
+            r = await woo_sync_product_internal(pid, sid)
+            for res in r.get("results", []):
+                if res.get("success"):
+                    summary["published"] += 1
+                else:
+                    summary["failed"] += 1
+                summary["details"].append({"productId": pid, "sku": prod.get("sku"), **res})
+    return {"success": True, **summary}
+
+
+# ========== CSV EXPORT ==========
+@app.get("/api/export/products.csv")
+async def export_products_csv(current=Depends(get_current_user)):
+    import csv as _csv
+    import io as _io
+    from fastapi.responses import PlainTextResponse
+    docs = await db.products.find(scope_q(current)).sort("createdAt", -1).to_list(None)
+    out = _io.StringIO()
+    w = _csv.writer(out)
+    w.writerow(["sku", "name", "category", "brand", "costPrice", "retailPrice", "margin", "stock", "isActive"])
+    for d in docs:
+        margin = round(d.get("retailPrice", 0) - d.get("costPrice", 0), 2)
+        w.writerow([d.get("sku"), d.get("name"), d.get("category"), d.get("brand"),
+                    d.get("costPrice", 0), d.get("retailPrice", 0), margin, d.get("stock", 0), d.get("isActive", True)])
+    return PlainTextResponse(out.getvalue(), media_type="text/csv",
+                             headers={"Content-Disposition": "attachment; filename=produits.csv"})
+
+
+@app.get("/api/export/orders.csv")
+async def export_orders_csv(current=Depends(get_current_user)):
+    import csv as _csv
+    import io as _io
+    from fastapi.responses import PlainTextResponse
+    docs = await db.orders.find(scope_q(current)).sort("createdAt", -1).to_list(None)
+    out = _io.StringIO()
+    w = _csv.writer(out)
+    w.writerow(["orderNumber", "customerName", "customerEmail", "total", "status", "paymentStatus", "items", "createdAt"])
+    for d in docs:
+        items = "; ".join(f"{i.get('sku')} x{i.get('quantity')}" for i in d.get("items", []))
+        created = d.get("createdAt")
+        created = created.isoformat() if isinstance(created, datetime) else str(created)
+        w.writerow([d.get("orderNumber"), d.get("customerName"), d.get("customerEmail"),
+                    d.get("total", 0), d.get("status"), d.get("paymentStatus"), items, created])
+    return PlainTextResponse(out.getvalue(), media_type="text/csv",
+                             headers={"Content-Disposition": "attachment; filename=commandes.csv"})
+
+
+# ========== SETTINGS (multi-devise + TVA) ==========
+DEFAULT_SETTINGS = {
+    "currency": "EUR", "currencySymbol": "€", "vatRate": 20.0, "vatIncluded": True,
+    "exchangeRates": {"EUR": 1.0, "USD": 1.08, "GBP": 0.85, "CHF": 0.96},
+}
+
+
+def _settings_key(current):
+    if current.get("role") in ("admin", "api_key"):
+        return "settings:global"
+    return f"settings:{current.get('id')}"
+
+
+@app.get("/api/settings")
+async def get_settings(current=Depends(get_current_user)):
+    doc = await db.app_settings.find_one({"key": _settings_key(current)})
+    s = dict(DEFAULT_SETTINGS)
+    if doc and doc.get("value"):
+        s.update(doc["value"])
+    return {"success": True, "settings": s}
+
+
+@app.put("/api/settings")
+async def update_settings(payload: dict, current=Depends(get_current_user)):
+    s = dict(DEFAULT_SETTINGS)
+    s.update({k: v for k, v in payload.items() if k in DEFAULT_SETTINGS})
+    await db.app_settings.update_one(
+        {"key": _settings_key(current)},
+        {"$set": {"key": _settings_key(current), "value": s, "updatedAt": utc_now()}},
+        upsert=True,
+    )
+    return {"success": True, "settings": s}
+
+
+# ========== COMPETITOR PRICE WATCH (Alertes prix concurrents) ==========
+class CompetitorPricePayload(BaseModel):
+    productId: str
+    competitorName: str
+    competitorUrl: Optional[str] = None
+    competitorPrice: float
+
+
+@app.get("/api/competitor-prices")
+async def list_competitor_prices(current=Depends(get_current_user)):
+    docs = await db.competitor_prices.find(scope_q(current)).sort("checkedAt", -1).to_list(None)
+    result = []
+    for d in docs:
+        j = doc_to_json(d)
+        prod = None
+        if ObjectId.is_valid(d.get("productId", "")):
+            prod = await db.products.find_one({"_id": oid(d["productId"])})
+        our_price = prod.get("retailPrice", 0) if prod else 0
+        j["productName"] = prod.get("name") if prod else "—"
+        j["productSku"] = prod.get("sku") if prod else "—"
+        j["ourPrice"] = our_price
+        j["isCheaper"] = bool(prod and our_price <= d.get("competitorPrice", 0))
+        j["diff"] = round(our_price - d.get("competitorPrice", 0), 2)
+        result.append(j)
+    alerts = [r for r in result if not r["isCheaper"]]
+    return {"success": True, "data": result, "alertsCount": len(alerts)}
+
+
+@app.post("/api/competitor-prices")
+async def create_competitor_price(payload: CompetitorPricePayload, current=Depends(get_current_user)):
+    doc = set_owner(payload.model_dump(), current)
+    doc["checkedAt"] = utc_now()
+    r = await db.competitor_prices.insert_one(doc)
+    prod = None
+    if ObjectId.is_valid(payload.productId):
+        prod = await db.products.find_one({"_id": oid(payload.productId)})
+    if prod and prod.get("retailPrice", 0) > payload.competitorPrice:
+        await db.notifications.insert_one(set_owner({
+            "type": "price_change", "severity": "warning", "title": "Prix concurrent plus bas",
+            "message": f"{prod.get('name')} : {payload.competitorName} à {payload.competitorPrice}€ (nous : {prod.get('retailPrice')}€)",
+            "link": "/veille-prix", "read": False, "createdAt": utc_now(),
+        }, current))
+    return {"success": True, "id": str(r.inserted_id)}
+
+
+@app.delete("/api/competitor-prices/{cid}")
+async def delete_competitor_price(cid: str, current=Depends(get_current_user)):
+    await db.competitor_prices.delete_one({**scope_q(current), "_id": oid(cid)})
+    return {"success": True}
 
 
 # ========== STARTUP ==========

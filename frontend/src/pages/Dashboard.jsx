@@ -2,29 +2,47 @@ import { useEffect, useState } from "react";
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, LineChart, Line, CartesianGrid,
 } from "recharts";
-import { TrendUp, Package, Warning, ShoppingBag, CurrencyEur, Truck } from "@phosphor-icons/react";
-import api from "../lib/api";
+import { TrendUp, Package, Warning, ShoppingBag, CurrencyEur, Truck, Buildings, FileCsv } from "@phosphor-icons/react";
+import api, { downloadCSV } from "../lib/api";
 import { fmtEUR, fmtNumber, fmtDate } from "../lib/format";
 import { PageHeader, Card, Loading, StockBadge } from "../components/Bits";
 import { Link } from "react-router-dom";
+import { toast } from "sonner";
 
 export default function Dashboard() {
   const [data, setData] = useState(null);
   const [perf, setPerf] = useState([]);
+  const [stores, setStores] = useState([]);
 
   useEffect(() => {
     api.get("/dashboard/overview").then((r) => setData(r.data));
     api.get("/dashboard/supplier-performance").then((r) => setPerf(r.data.data || []));
+    api.get("/dashboard/store-analytics").then((r) => setStores(r.data.data || []));
   }, []);
 
   if (!data) return <div className="p-12"><Loading /></div>;
   const m = data.metrics;
+
+  const exportCSV = (kind) => {
+    downloadCSV(`/export/${kind}.csv`, `${kind === "products" ? "produits" : "commandes"}.csv`);
+    toast.success(`Export ${kind === "products" ? "produits" : "commandes"} lancé`);
+  };
 
   return (
     <div className="p-8 lg:p-12 fade-up">
       <PageHeader
         title="Tableau de bord"
         subtitle={`Mise à jour : ${new Date().toLocaleString("fr-FR")}`}
+        action={
+          <>
+            <button className="btn btn-secondary" data-testid="export-products-btn" onClick={() => exportCSV("products")}>
+              <FileCsv size={14} weight="bold" /> Produits CSV
+            </button>
+            <button className="btn btn-secondary" data-testid="export-orders-btn" onClick={() => exportCSV("orders")}>
+              <FileCsv size={14} weight="bold" /> Commandes CSV
+            </button>
+          </>
+        }
       />
 
       {/* Metrics grid */}
@@ -34,6 +52,54 @@ export default function Dashboard() {
         <Metric icon={Warning} label="Alertes de stock" value={fmtNumber(m.lowStockCount)} hint={`${m.unreadNotifications} notifs non lues`} accent={m.lowStockCount > 0} />
         <Metric icon={Package} label="Catalogue" value={fmtNumber(m.totalProducts)} hint={`${m.totalSuppliers} fournisseurs actifs`} />
       </div>
+
+      {/* Per-store analytics */}
+      {stores.length > 0 && (
+        <Card
+          title="Analytics par boutique"
+          className="mb-8"
+          action={<Link to="/boutiques" className="btn btn-ghost text-[11px]">Gérer les boutiques →</Link>}
+        >
+          <div className="table-wrap">
+            <table className="data-table" data-testid="store-analytics-table">
+              <thead>
+                <tr>
+                  <th>Boutique</th>
+                  <th className="num">Produits publiés</th>
+                  <th className="num">Valeur catalogue</th>
+                  <th className="num">Marge catalogue</th>
+                  <th className="num">Commandes</th>
+                  <th className="num">CA</th>
+                  <th className="num">Marge (CA)</th>
+                </tr>
+              </thead>
+              <tbody>
+                {stores.map((s, i) => (
+                  <tr key={s.storeId || `un-${i}`} data-testid={`store-analytics-row-${i}`}>
+                    <td>
+                      <div className="flex items-center gap-2">
+                        <Buildings size={16} weight="duotone" className="text-primary" />
+                        <div>
+                          <div className="font-semibold text-[13px]">{s.storeName}</div>
+                          {s.url && <div className="mono text-[10px] text-muted-foreground truncate max-w-[220px]">{s.url}</div>}
+                        </div>
+                      </div>
+                    </td>
+                    <td className="num">{fmtNumber(s.publishedCount)}</td>
+                    <td className="num">{fmtEUR(s.catalogValue)}</td>
+                    <td className="num text-success">{fmtEUR(s.catalogMargin)}</td>
+                    <td className="num">{fmtNumber(s.orderCount)}</td>
+                    <td className="num font-bold">{fmtEUR(s.revenue)}</td>
+                    <td className="num text-success">
+                      {fmtEUR(s.margin)} <span className="text-muted-foreground">({s.marginPercent}%)</span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </Card>
+      )}
 
       {/* Charts row */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-8">

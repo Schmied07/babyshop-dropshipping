@@ -3,11 +3,12 @@ import { useEffect, useState } from "react";
 import {
   ChartLineUp, Package, Storefront, ShoppingBag, Percent, ArrowsClockwise,
   BellRinging, SignOut, MagnifyingGlass, PlugsConnected, DownloadSimple, Robot, Key,
-  Users as UsersIcon, Buildings,
+  Users as UsersIcon, Buildings, Gear, TrendUp,
 } from "@phosphor-icons/react";
 import { useAuth } from "../lib/auth";
 import api from "../lib/api";
 import { cn } from "../lib/format";
+import CommandPalette from "./CommandPalette";
 
 const links = [
   { to: "/", label: "Tableau de bord", icon: ChartLineUp, testid: "nav-dashboard" },
@@ -18,15 +19,18 @@ const links = [
   { to: "/regles-prix", label: "Règles de prix", icon: Percent, testid: "nav-pricing" },
   { to: "/woocommerce", label: "WooCommerce", icon: ArrowsClockwise, testid: "nav-woocommerce" },
   { to: "/boutiques", label: "Boutiques WP", icon: Buildings, testid: "nav-stores" },
+  { to: "/veille-prix", label: "Veille prix", icon: TrendUp, testid: "nav-price-watch" },
   { to: "/automatisations", label: "Automatisations", icon: Robot, testid: "nav-automations" },
   { to: "/cles-api", label: "Clés API", icon: Key, testid: "nav-api-keys" },
   { to: "/utilisateurs", label: "Utilisateurs", icon: UsersIcon, testid: "nav-users" },
+  { to: "/reglages", label: "Réglages", icon: Gear, testid: "nav-settings" },
 ];
 
 export default function Layout({ children }) {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
   const [unread, setUnread] = useState(0);
+  const [paletteOpen, setPaletteOpen] = useState(false);
 
   useEffect(() => {
     let mounted = true;
@@ -43,8 +47,21 @@ export default function Layout({ children }) {
     };
   }, []);
 
+  useEffect(() => {
+    const onKey = (e) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        setPaletteOpen((o) => !o);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
   return (
     <div className="min-h-screen flex bg-background">
+      <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} />
+
       {/* Sidebar */}
       <aside className="w-64 shrink-0 bg-sidebar text-white flex flex-col sticky top-0 h-screen">
         <div className="px-6 pt-8 pb-6 border-b border-zinc-800">
@@ -109,10 +126,14 @@ export default function Layout({ children }) {
       <div className="flex-1 min-w-0 flex flex-col">
         {/* Top bar */}
         <header className="sticky top-0 z-30 bg-white border-b border-border h-16 px-8 flex items-center justify-between">
-          <div className="flex items-center gap-3 text-zinc-400">
+          <button
+            onClick={() => setPaletteOpen(true)}
+            className="flex items-center gap-3 text-zinc-400 hover:text-foreground transition-colors"
+            data-testid="open-command-palette"
+          >
             <MagnifyingGlass size={16} weight="bold" />
             <span className="text-[13px] mono">Rechercher · <kbd className="px-1.5 py-0.5 border border-border bg-muted text-[10px] mono">Ctrl+K</kbd></span>
-          </div>
+          </button>
           <div className="flex items-center gap-2">
             <Link
               to="/notifications"

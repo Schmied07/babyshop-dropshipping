@@ -1,9 +1,12 @@
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import api from "../lib/api";
+import api, { downloadCSV } from "../lib/api";
 import { fmtEUR, cn } from "../lib/format";
 import { PageHeader, Card, StockBadge, StatusBadge, Loading } from "../components/Bits";
-import { MagnifyingGlass, X, ArrowsClockwise, Package as PkgIcon, Lightning, Sparkle, Globe, CloudArrowUp } from "@phosphor-icons/react";
+import {
+  MagnifyingGlass, X, ArrowsClockwise, Package as PkgIcon, Lightning, Sparkle, Globe,
+  CloudArrowUp, Robot, FileCsv, Buildings, CheckSquare, CaretDown,
+} from "@phosphor-icons/react";
 
 const CATEGORIES = ["Tous", "Hygiène", "Soins", "Bain", "Repas", "Déplacement"];
 
@@ -21,6 +24,11 @@ export default function Catalog() {
   const [tab, setTab] = useState("all");
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState(null);
+  const [checked, setChecked] = useState(new Set());
+  const [stores, setStores] = useState([]);
+  const [aiOpen, setAiOpen] = useState(false);
+  const [publishOpen, setPublishOpen] = useState(false);
+  const [busy, setBusy] = useState(false);
 
   const load = () => {
     setLoading(true);
@@ -30,12 +38,14 @@ export default function Catalog() {
     if (tab !== "all") params.sync_status = tab;
     api.get("/products", { params }).then((r) => {
       setProducts(r.data.data || []);
+      setChecked(new Set());
       setLoading(false);
     });
     api.get("/products/stats").then((r) => setStats(r.data));
   };
 
   useEffect(() => { load(); /* eslint-disable-next-line */ }, [cat, tab]);
+  useEffect(() => { api.get("/stores").then((r) => setStores(r.data.data || [])); }, []);
 
   const applyRules = async () => {
     toast.promise(api.post("/pricing-rules/apply-all").then(() => load()), {
@@ -45,15 +55,67 @@ export default function Catalog() {
     });
   };
 
+  const toggle = (id) => {
+    const next = new Set(checked);
+    next.has(id) ? next.delete(id) : next.add(id);
+    setChecked(next);
+  };
+  const toggleAll = () => {
+    if (checked.size === products.length) setChecked(new Set());
+    else setChecked(new Set(products.map((p) => p.id)));
+  };
+
+  const runBulkAI = async (action) => {
+    setAiOpen(false);
+    setBusy(true);
+    try {
+      const r = await api.post("/ai/bulk-action", { productIds: [...checked], action });
+      if (!r.data.configured) {
+        toast.error(r.data.message || "IA non configurée");
+      } else {
+        toast.success(`IA : ${r.data.updated} produit(s) mis à jour`);
+        load();
+      }
+    } catch (e) {
+      toast.error("Erreur IA : " + (e.response?.data?.detail || "erreur"));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const runBulkPublish = async (storeIds) => {
+    setPublishOpen(false);
+    setBusy(true);
+    try {
+      const r = await api.post("/woocommerce/bulk-publish", { productIds: [...checked], storeIds });
+      toast.success(`Publication : ${r.data.published} réussie(s), ${r.data.failed} échec(s)`);
+      load();
+    } catch (e) {
+      toast.error("Erreur publication : " + (e.response?.data?.detail || "erreur"));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const exportCSV = () => {
+    downloadCSV("/export/products.csv", "produits.csv");
+    toast.success("Export produits lancé");
+  };
+
   return (
     <div className="p-8 lg:p-12 fade-up">
       <PageHeader
         title="Catalogue"
         subtitle={`${stats.total} produits · ${stats.published} publiés · ${stats.not_published} en attente`}
         action={
-          <button className="btn btn-secondary" data-testid="apply-rules-btn" onClick={applyRules}>
-            <Lightning size={14} weight="bold" /> Appliquer règles de prix
-          </button>
+          <>
+            <button className="btn btn-secondary" data-testid="export-products-btn" onClick={exportCSV}>
+              <FileCsv size={14} weight="bold" /> Export CSV
+            </button>
+            <button className="btn btn-secondary" data-testid="apply-rules-btn" onClick={applyRules}>
+              <Lightning size={14} weight="bold" /> Appliquer règles de prix
+            </button>
+          </>
         }
       />
 
@@ -105,6 +167,39 @@ export default function Catalog() {
         ))}
       </div>
 
+      {/* Bulk action toolbar */}
+      {checked.size > 0 && (
+        <div className="flex items-center gap-3 mb-4 p-3 bg-black text-white sticky top-16 z-20 fade-up" data-testid="bulk-toolbar">
+          <CheckSquare size={18} weight="fill" className="text-white" />
+          <span className="text-[13px] font-semibold">{checked.size} sélectionné(s)</span>
+          <div className="flex-1" />
+          <div className="relative">
+            <button className="btn btn-secondary text-[12px]" onClick={() => setAiOpen((o) => !o)} disabled={busy} data-testid="bulk-ai-btn">
+              <Robot size={14} weight="bold" /> Actions IA <CaretDown size={12} weight="bold" />
+            </button>
+            {aiOpen && (
+              <div className="absolute right-0 mt-1 bg-white border border-border shadow-lg z-30 w-56 text-foreground" data-testid="bulk-ai-menu">
+                <button className="w-full text-left px-4 py-2.5 text-[13px] hover:bg-muted flex items-center gap-2" onClick={() => runBulkAI("translate")} data-testid="bulk-ai-translate">
+                  <Globe size={14} weight="bold" /> Traduire en FR
+                </button>
+                <button className="w-full text-left px-4 py-2.5 text-[13px] hover:bg-muted flex items-center gap-2" onClick={() => runBulkAI("seo")} data-testid="bulk-ai-seo">
+                  <Sparkle size={14} weight="bold" /> Générer descriptions SEO
+                </button>
+                <button className="w-full text-left px-4 py-2.5 text-[13px] hover:bg-muted flex items-center gap-2" onClick={() => runBulkAI("both")} data-testid="bulk-ai-both">
+                  <Lightning size={14} weight="bold" /> Traduire + SEO
+                </button>
+              </div>
+            )}
+          </div>
+          <button className="btn btn-primary text-[12px]" onClick={() => setPublishOpen(true)} disabled={busy} data-testid="bulk-publish-btn">
+            <CloudArrowUp size={14} weight="bold" /> Publier vers boutiques
+          </button>
+          <button className="text-white/70 hover:text-white p-1" onClick={() => setChecked(new Set())} data-testid="bulk-clear-btn" aria-label="Effacer">
+            <X size={16} weight="bold" />
+          </button>
+        </div>
+      )}
+
       {loading ? (
         <Loading />
       ) : (
@@ -113,6 +208,9 @@ export default function Catalog() {
             <table className="data-table" data-testid="products-table">
               <thead>
                 <tr>
+                  <th className="w-10">
+                    <input type="checkbox" checked={products.length > 0 && checked.size === products.length} onChange={toggleAll} data-testid="select-all-checkbox" />
+                  </th>
                   <th>Produit</th>
                   <th>Catégorie</th>
                   <th className="num">Coût</th>
@@ -128,7 +226,10 @@ export default function Catalog() {
                   const margin = (p.retailPrice || 0) - (p.costPrice || 0);
                   const marginPct = p.retailPrice > 0 ? ((margin / p.retailPrice) * 100).toFixed(0) : 0;
                   return (
-                    <tr key={p.id}>
+                    <tr key={p.id} className={checked.has(p.id) ? "bg-blue-50" : ""}>
+                      <td>
+                        <input type="checkbox" checked={checked.has(p.id)} onChange={() => toggle(p.id)} data-testid={`select-${p.sku}`} />
+                      </td>
                       <td>
                         <div className="flex items-center gap-3">
                           {p.images?.[0] ? (
@@ -170,7 +271,7 @@ export default function Catalog() {
                   );
                 })}
                 {products.length === 0 && (
-                  <tr><td colSpan={8} className="text-center py-8 text-muted-foreground">Aucun produit dans cette vue.</td></tr>
+                  <tr><td colSpan={9} className="text-center py-8 text-muted-foreground">Aucun produit dans cette vue.</td></tr>
                 )}
               </tbody>
             </table>
@@ -179,6 +280,60 @@ export default function Catalog() {
       )}
 
       {selected && <ProductDrawer product={selected} onClose={() => setSelected(null)} onChanged={load} />}
+      {publishOpen && (
+        <PublishModal
+          count={checked.size}
+          stores={stores}
+          onClose={() => setPublishOpen(false)}
+          onPublish={runBulkPublish}
+        />
+      )}
+    </div>
+  );
+}
+
+function PublishModal({ count, stores, onClose, onPublish }) {
+  const [sel, setSel] = useState(new Set());
+  const toggle = (id) => {
+    const n = new Set(sel);
+    n.has(id) ? n.delete(id) : n.add(id);
+    setSel(n);
+  };
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4" data-testid="publish-modal">
+      <div className="absolute inset-0 bg-black/40" onClick={onClose} />
+      <div className="relative w-full max-w-md bg-white border border-border fade-up">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-border">
+          <div className="h3">Publier {count} produit(s)</div>
+          <button className="p-2 hover:bg-muted" onClick={onClose}><X size={18} weight="bold" /></button>
+        </div>
+        <div className="p-5 space-y-3">
+          <div className="text-[12px] text-muted-foreground">
+            Choisissez les boutiques cibles. Sans sélection, toutes vos boutiques actives seront utilisées.
+          </div>
+          {stores.length === 0 ? (
+            <div className="text-[13px] p-3 border border-dashed border-border text-muted-foreground">
+              Aucune boutique configurée. La boutique WooCommerce par défaut sera utilisée si disponible.
+            </div>
+          ) : (
+            <div className="space-y-2 max-h-60 overflow-y-auto">
+              {stores.map((s) => (
+                <label key={s.id} className={"flex items-center gap-3 p-3 border cursor-pointer " + (sel.has(s.id) ? "border-primary bg-blue-50" : "border-border hover:bg-muted")} data-testid={`publish-store-${s.id}`}>
+                  <input type="checkbox" checked={sel.has(s.id)} onChange={() => toggle(s.id)} />
+                  <Buildings size={16} weight="duotone" className="text-primary" />
+                  <div className="min-w-0">
+                    <div className="text-[13px] font-semibold">{s.name}</div>
+                    <div className="mono text-[10px] text-muted-foreground truncate">{s.url}</div>
+                  </div>
+                </label>
+              ))}
+            </div>
+          )}
+          <button className="btn btn-primary w-full" onClick={() => onPublish([...sel])} data-testid="publish-confirm-btn">
+            <CloudArrowUp size={14} weight="bold" /> {sel.size > 0 ? `Publier vers ${sel.size} boutique(s)` : "Publier vers toutes les boutiques"}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
@@ -218,7 +373,6 @@ function ProductDrawer({ product, onClose, onChanged }) {
         brand: product.brand || "",
       });
       toast.success("Description SEO générée par IA");
-      // refresh detail
       const d = await api.get(`/products/${product.id}`);
       setDetail(d.data);
       onChanged();

@@ -1,0 +1,50 @@
+{
+  "summary": "v1.4 EuropaDrop full backend + frontend testing. 17/17 new pytest tests PASS (store-analytics, settings, bulk-AI graceful degrade, bulk-publish, CSV export, competitor-prices, and multi-user isolation). All requested frontend flows verified end-to-end: dashboard store-analytics table + CSV export buttons, Ctrl+K palette (+ top-bar button, ESC, 'export' / 'catalogue' filters), catalog bulk toolbar (bulk-ai menu translate/seo/both, publish-modal + confirm), /reglages (currency EUR/USD/GBP/CHF + vat-rate-input + save), /veille-prix (add-competitor modal with all 4 fields). FIXED 2 blocker bugs before testing could proceed: (1) frontend was serving with stale REACT_APP_BACKEND_URL=undefined (needed supervisor restart after .env update); (2) GET /api/dashboard/overview 500'd with NameError: 'current' not defined — the Depends arg was named '_' but the body used 'current'.",
+  "backend_issues": {
+    "critical": [
+      {"endpoint": "GET /api/dashboard/overview", "issue": "500 NameError: name 'current' is not defined. Handler signature used '_=Depends(get_current_user)' but function body references 'current' on lines 1002-1003. This crashed the entire Dashboard page for every logged-in user. FIXED by renaming '_' -> 'current' in the signature.", "priority": "CRITICAL"}
+    ],
+    "minor": [
+      {"endpoint": "GET /api/dashboard/overview", "issue": "Even after the NameError fix, this endpoint reads GLOBAL data (count_documents({}), db.orders.find({})) — it does NOT apply scope_q. This means an operator would see admin's aggregated metrics on the dashboard cards, contradicting the isolation requirement. store-analytics IS properly scoped; overview is not."},
+      {"endpoint": "POST /api/ai/bulk-action", "issue": "Response uses HTTP 200 with {success:false} for missing key (as required) — but action=='invalid' silently degrades to translate. Consider validating 'action' enum server-side."},
+      {"endpoint": "POST /api/woocommerce/bulk-publish", "issue": "Includes raw exception text in details[] when a store is unreachable ('[Errno -2] Name or service not known'). Consider mapping to friendly codes (same finding as iter 3)."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [
+      {"flow": "Dashboard load after login", "issue": "Frontend showed Uncaught runtime errors overlay from dashboard_overview 500. Root cause was backend NameError (now fixed). Also, after main agent updated frontend/.env, the frontend supervisor was not restarted so bundle had REACT_APP_BACKEND_URL=undefined and POSTed to https://.../undefined/api/... — fixed by restarting frontend supervisor.", "affected_selectors": ["[data-testid='store-analytics-table']"]}
+    ],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_v14_analytics_bulk_isolation.py",
+    "/app/test_reports/pytest/pytest_v14.xml"
+  ],
+  "action_items": [
+    "VERIFY dashboard_overview fix (rename _ -> current) is preserved — testing agent already applied it. Consider scoping the overview endpoint (count_documents, orders.find) with scope_q(current) so operator dashboard metrics also respect isolation. Currently only store-analytics is scoped; the top KPI cards leak admin totals to any logged-in user.",
+    "OPTIONAL: whenever /app/frontend/.env changes, remember `sudo supervisorctl restart frontend` — CRA compiles env vars into the bundle at startup, HMR alone doesn't pick them up.",
+    "OPTIONAL: consider fail-fast validation of 'action' enum in BulkAIPayload (Literal['translate','seo','both']).",
+    "OPTIONAL: consider fail-fast on missing REACT_APP_BACKEND_URL at app boot instead of interpolating 'undefined' into request URLs."
+  ],
+  "critical_code_review_comments": [
+    "server.py is now ~1893 lines. STRONGLY reiterate iter-3 recommendation to split by domain routers.",
+    "dashboard_overview (line 990) mixes GLOBAL aggregates (count_documents({}), orders.find({})) with SCOPED queries (scope_q(current)). Design inconsistency — either everything is scoped (correct for isolation), or the endpoint should be admin-only.",
+    "In store-analytics, product_mappings.find({'storeId': sid, ...}) does NOT apply scope_q — so if the operator shares a storeId collision with admin's mappings (unlikely but not impossible with ObjectId), scoping could leak. Low risk but worth noting.",
+    "list_competitor_prices resolves the product with db.products.find_one({'_id': oid(...)}) without scope_q — an operator could POST a competitor-price for productId of an admin's product (they'd need to guess the ObjectId, but there's no ownership check on the productId). Consider validating that productId belongs to scope_q(current).",
+    "settings key is per-user for non-admin but 'settings:global' for admin. If two admins exist, they share settings. Consider per-user key uniformly.",
+    "Frontend api.js uses process.env.REACT_APP_BACKEND_URL without a fallback + no runtime assert → produces literal string 'undefined' in URL when env missing (as observed). Add: if (!BACKEND_URL) throw new Error('REACT_APP_BACKEND_URL missing at build time');"
+  ],
+  "updated_files": [
+    "/app/backend/server.py (renamed _ -> current in dashboard_overview signature, line 990, to fix NameError)",
+    "/app/backend/tests/test_v14_analytics_bulk_isolation.py (new — 17 tests)",
+    "supervisor restart of frontend service to pick up REACT_APP_BACKEND_URL"
+  ],
+  "success_rate": {"backend": "100% (17/17 v1.4 tests) — after applying dashboard_overview fix", "frontend": "100% (all requested selectors and flows verified)"},
+  "test_credentials": "Admin: admin@marcherbien.fr / Admin1234! · Operator: operator@marcherbien.fr / Op1234! (auto-created by fixture if missing). Both matched /app/memory/test_credentials.md.",
+  "seed_data_creation": "Tests create ephemeral TEST_Competitor_A price row (deleted), TEST_Op_Store + TEST_OP_SKU_001 product (deleted after assertions). PUT /api/settings toggles currency to USD/vatRate 5.5 and resets to EUR/20.0 at teardown. No residual test data.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "v1.4 fully green after the NameError fix. All 17 backend tests idempotent. Frontend E2E covers: Ctrl+K palette + top-bar button + ESC + typing filters, dashboard store-analytics-table + 2 CSV export buttons, catalog select-all + row select-<SKU> + bulk-toolbar + bulk-ai-btn menu (translate/seo/both) + bulk-publish-btn + publish-modal + publish-confirm-btn, /reglages currency-{EUR,USD,GBP,CHF} + vat-rate-input + settings-save-btn, /veille-prix add-competitor-btn + modal (product-select, name-input, price-input, submit-btn). If REACT_APP_BACKEND_URL is updated in frontend/.env, ALWAYS restart frontend supervisor.",
+  "rca of the issue": "Blocker #1 (frontend calling /undefined/api/...): CRA reads process.env.REACT_APP_BACKEND_URL at compile/dev-server start. Main agent recreated frontend/.env after env reset but did NOT restart the frontend service, so the running webpack-dev-server still had the old (unset) env. Mitigation: sudo supervisorctl restart frontend. Long-term: fail-fast in api.js if BACKEND_URL is falsy. Blocker #2 (dashboard 500): dashboard_overview was refactored at some point to accept auth via `_=Depends(get_current_user)` (arg discarded) but the body still references the variable name `current` on lines 1002-1003. Every non-admin request → NameError. Reproduction: log in as any user, GET /api/dashboard/overview → 500. Fix applied: renamed the parameter to `current`."
+}

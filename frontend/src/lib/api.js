@@ -23,4 +23,16 @@ api.interceptors.response.use(
   }
 );
 
+export async function downloadCSV(path, filename) {
+  const r = await api.get(path, { responseType: "blob" });
+  const url = window.URL.createObjectURL(new Blob([r.data]));
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  window.URL.revokeObjectURL(url);
+}
+
 export default api;
