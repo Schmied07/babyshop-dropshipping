@@ -1,6 +1,8 @@
 # EuropaDrop — Stack de production (MongoDB = Atlas externe, donc pas de conteneur mongo)
 # Usage : cd deploy && cp .env.example .env  (puis éditez .env) && docker compose up -d --build
 
+version: "3.8"
+
 services:
   backend:
     build:

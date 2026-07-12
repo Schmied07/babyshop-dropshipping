@@ -1,145 +1,39 @@
-# Docker Compose - Babyshop Dropshipping Stack
-# Usage: docker-compose up -d
-# Stop: docker-compose down
-# Logs: docker-compose logs -f
+# EuropaDrop — Stack de production (FastAPI + React). MongoDB = Atlas externe.
+# Usage : cp .env.example .env  (éditez .env) puis :  docker compose up -d --build
+# Premier admin (si base vide) :  docker compose exec backend python seed.py
 
-version: '3.8'
+version: "3.8"
 
 services:
-  # Base de données MongoDB
-  mongodb:
-    image: mongo:7.0-alpine
-    container_name: babyshop-mongodb
-    restart: unless-stopped
-    
-    # Ports
-    ports:
-      - "27017:27017"
-    
-    # Volumes (persistance données)
-    volumes:
-      - mongodb_data:/data/db
-      - mongodb_logs:/var/log/mongodb
-      # Script seeding optionnel
-      # - ./mongodb_babyshop_seed.js:/docker-entrypoint-initdb.d/seed.js
-    
-    # Environment
-    environment:
-      MONGO_INITDB_ROOT_USERNAME: admin
-      MONGO_INITDB_ROOT_PASSWORD: password123
-      MONGO_INITDB_DATABASE: babyshop
-    
-    # Healthcheck
-    healthcheck:
-      test: echo 'db.runCommand("ping").ok' | mongosh localhost:27017/test --quiet
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 20s
-    
-    # Logs
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "3"
-    
-    networks:
-      - babyshop-network
-
-  # API Node.js
-  api:
+  backend:
     build:
       context: .
-      dockerfile: Dockerfile
-    container_name: babyshop-api
+      dockerfile: deploy/Dockerfile.backend
+    container_name: europadrop-backend
     restart: unless-stopped
-    
-    # Ports
-    ports:
-      - "3000:3000"
-    
-    # Dépendances
-    depends_on:
-      mongodb:
-        condition: service_healthy
-    
-    # Variables d'environnement
-    environment:
-      NODE_ENV: production
-      MONGODB_URI: mongodb://admin:password123@mongodb:27017/babyshop?authSource=admin
-      PORT: 3000
-      WP_API_URL: ${WP_API_URL:-https://marcherbien.fr/wp-json/wc/v3}
-      WP_API_KEY: ${WP_API_KEY}
-      WP_API_SECRET: ${WP_API_SECRET}
-      LOG_LEVEL: info
-      LOG_DIR: /app/logs
-    
-    # Volumes
-    volumes:
-      - ./logs:/app/logs
-      # Mode développement (bind mount source)
-      # - .:/app:cached
-    
-    # Healthcheck
-    healthcheck:
-      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3000/api/health', (r) => {if (r.statusCode !== 200) throw new Error(r.statusCode)})"]
-      interval: 30s
-      timeout: 3s
-      retries: 3
-      start_period: 40s
-    
-    # Logs
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "3"
-    
+    env_file: .env
+    expose:
+      - "8001"            # interne au réseau docker (proxifié par le frontend)
     networks:
-      - babyshop-network
+      - europadrop
 
-  # Optionnel: MongoDB Express (Admin UI)
-  mongo-express:
-    image: mongo-express:latest
-    container_name: babyshop-mongo-express
+  frontend:
+    build:
+      context: .
+      dockerfile: deploy/Dockerfile.frontend
+      args:
+        REACT_APP_BACKEND_URL: ${REACT_APP_BACKEND_URL}
+    container_name: europadrop-frontend
     restart: unless-stopped
-    
-    # Ports
-    ports:
-      - "8081:8081"
-    
-    # Dépendances
     depends_on:
-      - mongodb
-    
-    # Environment
-    environment:
-      ME_CONFIG_MONGODB_ADMINUSERNAME: admin
-      ME_CONFIG_MONGODB_ADMINPASSWORD: password123
-      ME_CONFIG_MONGODB_URL: mongodb://admin:password123@mongodb:27017/
-      ME_CONFIG_BASICAUTH_USERNAME: admin
-      ME_CONFIG_BASICAUTH_PASSWORD: password123
-    
-    # Networks
+      - backend
+    ports:
+      # Port 3000 = celui attendu par votre reverse-proxy existant (domaine + HTTPS).
+      # Mettez "127.0.0.1:3000:80" si le proxy tourne sur la même machine.
+      - "3000:80"
     networks:
-      - babyshop-network
-    
-    # Commenté par défaut (décommenter si besoin)
-    # profiles:
-    #   - debug
+      - europadrop
 
-# Volumes nommés (persistance)
-volumes:
-  mongodb_data:
-    driver: local
-  mongodb_logs:
-    driver: local
-
-# Réseau personnalisé
 networks:
-  babyshop-network:
+  europadrop:
     driver: bridge
-
-# Profils (pour services optionnels)
-# docker-compose --profile debug up
