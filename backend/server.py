@@ -988,12 +988,13 @@ async def mark_all_read(_=Depends(get_current_user)):
 # ========== DASHBOARD & ANALYTICS ==========
 @app.get("/api/dashboard/overview")
 async def dashboard_overview(current=Depends(get_current_user)):
-    total_products = await db.products.count_documents({})
+    pq = scope_q(current)
+    total_products = await db.products.count_documents(pq)
     total_suppliers = await db.suppliers.count_documents({"isActive": True})
-    total_orders = await db.orders.count_documents({})
-    pending_orders = await db.orders.count_documents({"status": "pending"})
+    total_orders = await db.orders.count_documents(pq)
+    pending_orders = await db.orders.count_documents({**pq, "status": "pending"})
 
-    orders = await db.orders.find({}).to_list(None)
+    orders = await db.orders.find(pq).to_list(None)
     revenue = sum(o.get("total", 0) for o in orders)
     cost = sum(sum(i.get("supplierCost", 0) * i.get("quantity", 1) for i in o.get("items", [])) for o in orders)
     margin = revenue - cost
@@ -1845,7 +1846,7 @@ async def list_competitor_prices(current=Depends(get_current_user)):
         j = doc_to_json(d)
         prod = None
         if ObjectId.is_valid(d.get("productId", "")):
-            prod = await db.products.find_one({"_id": oid(d["productId"])})
+            prod = await db.products.find_one({**scope_q(current), "_id": oid(d["productId"])})
         our_price = prod.get("retailPrice", 0) if prod else 0
         j["productName"] = prod.get("name") if prod else "—"
         j["productSku"] = prod.get("sku") if prod else "—"
@@ -1864,7 +1865,7 @@ async def create_competitor_price(payload: CompetitorPricePayload, current=Depen
     r = await db.competitor_prices.insert_one(doc)
     prod = None
     if ObjectId.is_valid(payload.productId):
-        prod = await db.products.find_one({"_id": oid(payload.productId)})
+        prod = await db.products.find_one({**scope_q(current), "_id": oid(payload.productId)})
     if prod and prod.get("retailPrice", 0) > payload.competitorPrice:
         await db.notifications.insert_one(set_owner({
             "type": "price_change", "severity": "warning", "title": "Prix concurrent plus bas",

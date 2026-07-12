@@ -1,4 +1,4 @@
-# EuropaDrop — PRD v1.3
+# EuropaDrop — PRD v1.4
 
 ## Problem Statement (original, verbatim)
 > "je veux que tu completes les fonctionalité pour que l'aplication fonctionne comme dsers mais en mieux"
@@ -48,6 +48,20 @@
   - Endpoints : GET/POST/PUT/DELETE /api/users (admin only)
   - Guard frontend + backend (operator voit un écran "Accès réservé")
   - Auto-protection : impossible de supprimer son propre compte
+
+## Tech Stack
+### v1.4 (session 5 — actuel, juillet 2026)
+- **Analytics par boutique** : `/api/dashboard/store-analytics` (CA/marge/produits publiés séparés par store + bucket "Non attribuée") + table sur Dashboard
+- **Actions IA en masse** depuis le catalogue : sélection multi-lignes + `/api/ai/bulk-action` (translate | seo | both) — dégrade gracieusement si clé DeepSeek absente
+- **Command palette Ctrl+K** : navigation, actions rapides (export CSV, règles de prix), recherche produit live
+- **Publier vers X boutiques en 1 clic** : `/api/woocommerce/bulk-publish` + modal de sélection des boutiques
+- **Isolation multi-utilisateurs COMPLÈTE** : `scope_q`/`set_owner` — chaque user ne voit QUE ses stores/produits/commandes/notifs/veille-prix ; admin voit tout. Appliqué à products, orders, stores, dashboard overview + store-analytics, notifications, competitor-prices, imports catalogue
+- **Multi-devise + TVA** : `/api/settings` (EUR/USD/GBP/CHF + taux + TVA TTC/HT) + page `/reglages`
+- **Export CSV** : `/api/export/products.csv` + `/api/export/orders.csv`
+- **Alertes prix concurrents** : `/api/competitor-prices` + page `/veille-prix` (alerte quand on est plus cher)
+- 🔧 Fix env reset : recréation backend/.env + frontend/.env, pin pydantic-core==2.23.4
+
+## Pages Frontend (15) : + /reglages + /veille-prix
 
 ## Tech Stack
 - **Backend** : FastAPI 0.115 + Motor + Pydantic v2 + JWT/bcrypt + Pandas/openpyxl/xmltodict + HTTPX + APScheduler
@@ -106,9 +120,10 @@
 - Webhook secret : auto-géré en DB
 
 ## Prioritized Backlog
-- P0 : Renouveler clé DeepSeek (user action)
-- P1 : Vue analytics par boutique (revenue par store), Actions IA en masse
-- P2 : Command palette Ctrl+K, Multi-devise + TVA, Alertes prix concurrents, Export CSV
+- P0 : Renouveler clé DeepSeek (user action) pour activer traduction/SEO IA
+- P1 : Notifications email (SendGrid/Resend), scraping auto des prix concurrents
+- P2 : Refactor server.py en routers par domaine (~1900 lignes), per-store order attribution automatique
+- Tech-debt : fail-fast si REACT_APP_BACKEND_URL manquant ; validation enum action IA
 
 ## Dates
 - v1.0 : Jan 2026 · v1.1 : Jan 2026 · v1.2 : Jan 2026 · v1.3 : Jan 2026
