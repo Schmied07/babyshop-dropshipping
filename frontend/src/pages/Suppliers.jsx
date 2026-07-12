@@ -3,7 +3,7 @@ import api from "../lib/api";
 import { toast } from "sonner";
 import { PageHeader, Card, Loading, StatusBadge } from "../components/Bits";
 import { fmtDate } from "../lib/format";
-import { Storefront, MapPin, Plus, X, Star, Truck } from "@phosphor-icons/react";
+import { Storefront, MapPin, Plus, X, Star, Truck, Trash, PencilSimple } from "@phosphor-icons/react";
 
 export default function Suppliers() {
   const [suppliers, setSuppliers] = useState([]);
@@ -32,6 +32,17 @@ export default function Suppliers() {
       }
       setShowModal(false);
       setEditing(null);
+      load();
+    } catch (e) {
+      toast.error(e.response?.data?.detail || "Erreur");
+    }
+  };
+
+  const del = async (id) => {
+    if (!window.confirm("Supprimer ce fournisseur ?")) return;
+    try {
+      await api.delete(`/suppliers/${id}`);
+      toast.success("Fournisseur supprimé");
       load();
     } catch (e) {
       toast.error(e.response?.data?.detail || "Erreur");
@@ -79,9 +90,26 @@ export default function Suppliers() {
                 <Stat label="Avis" value={<span className="mono">{s.reviews || 0}</span>} />
               </div>
 
-              <div className="mt-4 pt-4 border-t border-border">
+              <div className="mt-4 pt-4 border-t border-border flex items-center justify-between">
                 <div className="flex items-center gap-1 text-[11px] text-muted-foreground mono uppercase tracking-widest">
                   <Truck size={12} weight="bold" /> Expédie vers {s.shipping?.countries?.length || 0} pays
+                </div>
+                <div className="flex items-center gap-1">
+                  <button
+                    className="btn btn-ghost text-[11px] py-1 px-2"
+                    onClick={(e) => { e.stopPropagation(); setEditing(s); setShowModal(true); }}
+                    data-testid={`edit-supplier-${s.id}`}
+                  >
+                    <PencilSimple size={14} weight="bold" /> Modifier
+                  </button>
+                  <button
+                    className="btn btn-ghost text-[11px] py-1 px-2 text-critical"
+                    onClick={(e) => { e.stopPropagation(); del(s.id); }}
+                    data-testid={`delete-supplier-${s.id}`}
+                    aria-label="Supprimer"
+                  >
+                    <Trash size={14} weight="bold" />
+                  </button>
                 </div>
               </div>
             </div>

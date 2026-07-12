@@ -1,0 +1,33 @@
+{
+  "summary": "Frontend-only CRUD testing per review_request (v1.5). LOGIN ok. CATALOG create/edit/delete WORK (critical manual-price persistence bug is FIXED — set 42,50 € on a product without supplier mapping, reloaded page, price persisted). Supplier-mapping CRUD inside product drawer WORKS (add/edit/delete a mapping on DEPL-SAC-0001, mapping table refreshed). ORDER CREATE works (created MB-2026-0005 with a test item). SUPPLIERS delete WORKS, edit modal opens correctly. TWO REQUESTED FEATURES ARE ENTIRELY MISSING FROM THE UI: (1) inline status dropdown `status-select-<orderNumber>` — the `changeStatus` handler exists at Orders.jsx:69 but is NOT wired to any DOM node; the Statut column only renders <StatusBadge/>. (2) per-row delete button `delete-order-<orderNumber>` — the `del` handler exists at Orders.jsx:79 but is NOT wired to any DOM node; the only per-row action rendered is the arrow `view-order-<orderNumber>`. Confirmed by `grep -n 'status-select|delete-order' /app/frontend/src/pages/Orders.jsx` returning zero matches.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "Orders row", "issue": "Missing inline status dropdown. `changeStatus(o, status)` is defined at Orders.jsx line 69 but the JSX only renders `<StatusBadge status={o.status} />` (line 174). No <select data-testid=\"status-select-<orderNumber>\"> element exists.", "selector": "[data-testid='status-select-<orderNumber>']", "priority": "HIGH"},
+      {"component": "Orders row", "issue": "Missing per-row delete button. `del(o)` is defined at Orders.jsx line 79 but the actions cell (line 189-197) only renders the view-order arrow button. No trash button with data-testid='delete-order-<orderNumber>' exists.", "selector": "[data-testid='delete-order-<orderNumber>']", "priority": "HIGH"}
+    ],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [],
+  "action_items": [
+    "Wire the inline status <select> in Orders.jsx row: replace/augment the Statut <td> with `<select data-testid={`status-select-${o.orderNumber}`} value={o.status} onChange={(e) => changeStatus(o, e.target.value)}>{STATUSES.map(...)}</select>` (keep StatusBadge visible or use styled select).",
+    "Add per-row trash button in Orders.jsx actions <td> (next to the view-order arrow): `<button data-testid={`delete-order-${o.orderNumber}`} onClick={() => del(o)}><Trash size={14} weight=\"bold\"/></button>`. Trash icon is already imported (line 6).",
+    "OPTIONAL: also consider adding data-testid='product-form-modal' visibility check when editing — currently SKU field is correctly disabled in edit mode (verified). No change needed there."
+  ],
+  "critical_code_review_comments": [
+    "Orders.jsx defines `changeStatus` and `del` at the top of the component but never uses them in JSX — classic dead-code smell. Either wire them or remove them; ESLint would flag as `no-unused-vars` if strict rules were on. Consider enabling `no-unused-vars` in eslint config to catch this class of bug pre-runtime.",
+    "The imports `Trash` (line 6) is present but never rendered in Orders.jsx — matches the missing delete button.",
+    "In Catalog.jsx ProductFormModal (line 641-748) the manual-price persistence works because backend refresh_product_aggregates was fixed to preserve manual price/stock when no supplier mapping exists. Verified end-to-end.",
+    "Suppliers.jsx card is `cursor-pointer` on the wrapping div that toggles edit modal (line 71) AND also has `edit-supplier` button inside (line 99) with `e.stopPropagation()`. That works, but the double affordance (whole card + explicit button) is redundant UX; consider one or the other.",
+    "OrderCreateModal always sends `productId: ''` (Orders.jsx line 230). Backend may not accept empty string as ObjectId in stricter validation; currently accepted by seed sandbox but risk for the future."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "n/a (skipped per request)", "frontend": "80% (8/10 requested flows pass — Order status-inline-select and Order per-row delete BOTH missing from UI)"},
+  "test_credentials": "Admin: admin@marcherbien.fr / Admin1234! (per /app/memory/test_credentials.md)",
+  "seed_data_creation": "Test artifacts: created+deleted product TEST-CRUD-<epoch>, created+edited+deleted a supplier-mapping SUPTEST-<epoch> on DEPL-SAC-0001, created order MB-2026-0005 with customer 'TEST_Client_<epoch>' (NOT DELETED because delete button missing — main agent may want to manually clean it), created+deleted supplier 'TEST_SUP_<epoch>'. Sandbox counts after run: 10 products, 5 orders, 4 suppliers.",
+  "retest_needed": true,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "After main agent adds the two missing Orders row controls, retest: (a) select an option in [data-testid='status-select-MB-2026-XXXX'] and verify PUT /api/orders/{id} with {status} succeeds and the badge/select updates after reload; (b) click [data-testid='delete-order-MB-2026-XXXX'], accept the window.confirm dialog, and verify DELETE /api/orders/{id} 200/204 and the row disappears. Also clean up leftover MB-2026-0005 TEST_Client_1783898832 order from the sandbox. All other CRUD flows (Catalog, mapping, supplier delete, order create, supplier edit modal) are green.",
+  "rca of the issue": "Both bugs share the same root cause: implementation is HALF-DONE. The state-mutating handlers `changeStatus(o, status)` and `del(o)` were added to Orders.jsx (lines 69-88) but the corresponding <select> and <button> JSX elements were never added to the row rendering block (lines 160-198). Reproduction: navigate to /commandes as admin, inspect any row — the only action button is the view-arrow with data-testid='view-order-<num>'. Grep proof: `grep -n 'status-select\\|delete-order' /app/frontend/src/pages/Orders.jsx` → 0 matches. Mitigation: add the two JSX elements as described in action_items. Backend DELETE /api/orders/{id} and PUT /api/orders/{id} are ready per the review context; only the UI wiring is missing."
+}

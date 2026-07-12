@@ -3,7 +3,10 @@ import { toast } from "sonner";
 import api from "../lib/api";
 import { PageHeader, Card, Loading, StatusBadge, PaymentBadge } from "../components/Bits";
 import { fmtDate, fmtEUR, cn } from "../lib/format";
-import { ShoppingBag, Truck, Package, CheckSquare, Square, Lightning, ClockCounterClockwise, ArrowRight } from "@phosphor-icons/react";
+import { ShoppingBag, Truck, Package, CheckSquare, Square, Lightning, ClockCounterClockwise, ArrowRight, Plus, Trash, X } from "@phosphor-icons/react";
+
+const STATUSES = ["pending", "processing", "shipped", "delivered", "cancelled"];
+const STATUS_LABELS = { pending: "En attente", processing: "En cours", shipped: "Expédiée", delivered: "Livrée", cancelled: "Annulée" };
 
 const FILTERS = [
   { key: "all", label: "Toutes" },
@@ -19,6 +22,7 @@ export default function Orders() {
   const [selected, setSelected] = useState(new Set());
   const [strategy, setStrategy] = useState("cheapest");
   const [detailOrder, setDetailOrder] = useState(null);
+  const [showCreate, setShowCreate] = useState(false);
 
   const load = () => {
     setLoading(true);
@@ -62,6 +66,27 @@ export default function Orders() {
     total: orders.reduce((sum, o) => sum + (o.total || 0), 0),
   }), [orders]);
 
+  const changeStatus = async (o, status) => {
+    try {
+      await api.put(`/orders/${o.id}`, { status });
+      toast.success(`Statut → ${STATUS_LABELS[status]}`);
+      load();
+    } catch (e) {
+      toast.error(e.response?.data?.detail || "Erreur");
+    }
+  };
+
+  const del = async (o) => {
+    if (!window.confirm(`Supprimer la commande ${o.orderNumber} ?`)) return;
+    try {
+      await api.delete(`/orders/${o.id}`);
+      toast.success("Commande supprimée");
+      load();
+    } catch (e) {
+      toast.error(e.response?.data?.detail || "Erreur");
+    }
+  };
+
   return (
     <div className="p-8 lg:p-12 fade-up">
       <PageHeader
@@ -87,6 +112,9 @@ export default function Orders() {
               data-testid="bulk-fulfill-btn"
             >
               <Lightning size={14} weight="bold" /> Traiter en masse ({selected.size})
+            </button>
+            <button className="btn btn-primary" onClick={() => setShowCreate(true)} data-testid="add-order-btn">
+              <Plus size={14} weight="bold" /> Nouvelle commande
             </button>
           </>
         }
@@ -179,6 +207,97 @@ export default function Orders() {
       )}
 
       {detailOrder && <OrderDetail order={detailOrder} onClose={() => setDetailOrder(null)} onChanged={load} />}
+      {showCreate && <OrderCreateModal onClose={() => setShowCreate(false)} onSaved={() => { setShowCreate(false); load(); }} />}
+    </div>
+  );
+}
+
+function OrderCreateModal({ onClose, onSaved }) {
+  const [form, setForm] = useState({ customerName: "", customerEmail: "", status: "pending", paymentStatus: "unpaid" });
+  const [items, setItems] = useState([{ sku: "", name: "", quantity: 1, price: 0 }]);
+  const [saving, setSaving] = useState(false);
+  const set = (k, v) => setForm({ ...form, [k]: v });
+  const setItem = (i, k, v) => setItems(items.map((it, idx) => idx === i ? { ...it, [k]: v } : it));
+  const total = items.reduce((s, it) => s + (Number(it.quantity) || 0) * (Number(it.price) || 0), 0);
+
+  const submit = async () => {
+    if (!form.customerName) return toast.error("Nom du client requis");
+    setSaving(true);
+    try {
+      await api.post("/orders", {
+        ...form,
+        items: items.filter((it) => it.name).map((it) => ({
+          productId: "", sku: it.sku, name: it.name,
+          quantity: Number(it.quantity) || 1, price: Number(it.price) || 0, supplierCost: 0,
+        })),
+        total,
+      });
+      toast.success("Commande créée");
+      onSaved();
+    } catch (e) {
+      toast.error(e.response?.data?.detail || "Erreur");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" data-testid="order-create-modal">
+      <div className="absolute inset-0 bg-black/50" onClick={onClose} />
+      <div className="relative bg-white w-full max-w-lg max-h-[90vh] overflow-y-auto border border-border fade-up">
+        <div className="border-b border-border px-6 py-4 flex items-center justify-between">
+          <div className="h2">Nouvelle commande</div>
+          <button className="p-2 hover:bg-muted" onClick={onClose}><X size={18} weight="bold" /></button>
+        </div>
+        <div className="p-6 space-y-4">
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="label">Nom du client</label>
+              <input className="input" value={form.customerName} onChange={(e) => set("customerName", e.target.value)} data-testid="order-customer-name" />
+            </div>
+            <div>
+              <label className="label">Email</label>
+              <input className="input" value={form.customerEmail} onChange={(e) => set("customerEmail", e.target.value)} />
+            </div>
+          </div>
+          <div>
+            <div className="label mb-2">Articles</div>
+            {items.map((it, i) => (
+              <div key={i} className="grid grid-cols-12 gap-2 mb-2">
+                <input className="input col-span-3 input-mono" placeholder="SKU" value={it.sku} onChange={(e) => setItem(i, "sku", e.target.value)} />
+                <input className="input col-span-5" placeholder="Produit" value={it.name} onChange={(e) => setItem(i, "name", e.target.value)} data-testid={`order-item-name-${i}`} />
+                <input type="number" className="input col-span-2 input-mono" placeholder="Qté" value={it.quantity} onChange={(e) => setItem(i, "quantity", e.target.value)} />
+                <input type="number" step="0.01" className="input col-span-2 input-mono" placeholder="Prix" value={it.price} onChange={(e) => setItem(i, "price", e.target.value)} />
+              </div>
+            ))}
+            <button className="btn btn-ghost text-[11px]" onClick={() => setItems([...items, { sku: "", name: "", quantity: 1, price: 0 }])}>
+              <Plus size={12} weight="bold" /> Ajouter une ligne
+            </button>
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="label">Statut</label>
+              <select className="input" value={form.status} onChange={(e) => set("status", e.target.value)}>
+                {STATUSES.map((s) => <option key={s} value={s}>{STATUS_LABELS[s]}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="label">Paiement</label>
+              <select className="input" value={form.paymentStatus} onChange={(e) => set("paymentStatus", e.target.value)}>
+                <option value="unpaid">En attente</option>
+                <option value="paid">Payé</option>
+              </select>
+            </div>
+          </div>
+          <div className="text-right mono font-bold">Total : {fmtEUR(total)}</div>
+        </div>
+        <div className="border-t border-border px-6 py-4 flex justify-end gap-2">
+          <button className="btn btn-secondary" onClick={onClose}>Annuler</button>
+          <button className="btn btn-primary" onClick={submit} disabled={saving} data-testid="order-create-submit">
+            {saving ? "Création…" : "Créer la commande"}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

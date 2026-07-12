@@ -5,7 +5,7 @@ import { fmtEUR, cn } from "../lib/format";
 import { PageHeader, Card, StockBadge, StatusBadge, Loading } from "../components/Bits";
 import {
   MagnifyingGlass, X, ArrowsClockwise, Package as PkgIcon, Lightning, Sparkle, Globe,
-  CloudArrowUp, Robot, FileCsv, Buildings, CheckSquare, CaretDown,
+  CloudArrowUp, Robot, FileCsv, Buildings, CheckSquare, CaretDown, Plus, Trash, PencilSimple,
 } from "@phosphor-icons/react";
 
 const CATEGORIES = ["Tous", "Hygiène", "Soins", "Bain", "Repas", "Déplacement"];
@@ -29,6 +29,8 @@ export default function Catalog() {
   const [aiOpen, setAiOpen] = useState(false);
   const [publishOpen, setPublishOpen] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [showForm, setShowForm] = useState(false);
+  const [editProduct, setEditProduct] = useState(null);
 
   const load = () => {
     setLoading(true);
@@ -102,6 +104,17 @@ export default function Catalog() {
     toast.success("Export produits lancé");
   };
 
+  const delProduct = async (p) => {
+    if (!window.confirm(`Supprimer le produit "${p.name}" ?`)) return;
+    try {
+      await api.delete(`/products/${p.id}`);
+      toast.success("Produit supprimé");
+      load();
+    } catch (e) {
+      toast.error(e.response?.data?.detail || "Erreur");
+    }
+  };
+
   return (
     <div className="p-8 lg:p-12 fade-up">
       <PageHeader
@@ -114,6 +127,9 @@ export default function Catalog() {
             </button>
             <button className="btn btn-secondary" data-testid="apply-rules-btn" onClick={applyRules}>
               <Lightning size={14} weight="bold" /> Appliquer règles de prix
+            </button>
+            <button className="btn btn-primary" data-testid="add-product-btn" onClick={() => { setEditProduct(null); setShowForm(true); }}>
+              <Plus size={14} weight="bold" /> Nouveau produit
             </button>
           </>
         }
@@ -259,13 +275,31 @@ export default function Catalog() {
                         )}
                       </td>
                       <td>
-                        <button
-                          className="btn btn-secondary text-[11px] py-1.5 px-2.5"
-                          onClick={() => setSelected(p)}
-                          data-testid={`product-detail-${p.sku}`}
-                        >
-                          Détails
-                        </button>
+                        <div className="flex items-center gap-1">
+                          <button
+                            className="btn btn-secondary text-[11px] py-1.5 px-2.5"
+                            onClick={() => setSelected(p)}
+                            data-testid={`product-detail-${p.sku}`}
+                          >
+                            Détails
+                          </button>
+                          <button
+                            className="btn btn-ghost text-[11px] py-1.5 px-2"
+                            onClick={() => { setEditProduct(p); setShowForm(true); }}
+                            data-testid={`edit-product-${p.sku}`}
+                            aria-label="Modifier"
+                          >
+                            <PencilSimple size={14} weight="bold" />
+                          </button>
+                          <button
+                            className="btn btn-ghost text-[11px] py-1.5 px-2 text-critical"
+                            onClick={() => delProduct(p)}
+                            data-testid={`delete-product-${p.sku}`}
+                            aria-label="Supprimer"
+                          >
+                            <Trash size={14} weight="bold" />
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   );
@@ -280,6 +314,13 @@ export default function Catalog() {
       )}
 
       {selected && <ProductDrawer product={selected} onClose={() => setSelected(null)} onChanged={load} />}
+      {showForm && (
+        <ProductFormModal
+          product={editProduct}
+          onClose={() => { setShowForm(false); setEditProduct(null); }}
+          onSaved={() => { setShowForm(false); setEditProduct(null); load(); }}
+        />
+      )}
       {publishOpen && (
         <PublishModal
           count={checked.size}
@@ -343,10 +384,50 @@ function ProductDrawer({ product, onClose, onChanged }) {
   const [best, setBest] = useState(null);
   const [strategy, setStrategy] = useState("cheapest");
   const [aiLoading, setAiLoading] = useState(false);
+  const [suppliers, setSuppliers] = useState([]);
+  const [supForm, setSupForm] = useState(null); // null = closed; object = editing/creating
+
+  const reloadDetail = () => api.get(`/products/${product.id}`).then((r) => setDetail(r.data));
 
   useEffect(() => {
-    api.get(`/products/${product.id}`).then((r) => setDetail(r.data));
+    reloadDetail();
+    api.get("/suppliers").then((r) => setSuppliers(r.data.data || []));
+    // eslint-disable-next-line
   }, [product.id]);
+
+  const saveMapping = async () => {
+    if (!supForm.supplierId || !supForm.supplierSku) return toast.error("Fournisseur et SKU requis");
+    try {
+      const payload = {
+        supplierId: supForm.supplierId,
+        productId: product.id,
+        supplierSku: supForm.supplierSku,
+        supplierName: supForm.supplierName || supForm.supplierSku,
+        costPrice: Number(supForm.costPrice) || 0,
+        stock: Number(supForm.stock) || 0,
+      };
+      if (supForm.id) await api.put(`/supplier-products/${supForm.id}`, payload);
+      else await api.post("/supplier-products", payload);
+      toast.success("Fournisseur enregistré");
+      setSupForm(null);
+      reloadDetail();
+      onChanged();
+    } catch (e) {
+      toast.error(e.response?.data?.detail || "Erreur");
+    }
+  };
+
+  const delMapping = async (sp) => {
+    if (!window.confirm("Retirer ce fournisseur du produit ?")) return;
+    try {
+      await api.delete(`/supplier-products/${sp.id}`);
+      toast.success("Fournisseur retiré");
+      reloadDetail();
+      onChanged();
+    } catch (e) {
+      toast.error(e.response?.data?.detail || "Erreur");
+    }
+  };
 
   useEffect(() => {
     api.get(`/products/${product.id}/best-supplier`, { params: { strategy } }).then((r) => setBest(r.data.best));
@@ -456,6 +537,32 @@ function ProductDrawer({ product, onClose, onChanged }) {
                 ))}
               </div>
             </div>
+            <div className="mb-3">
+              <button
+                className="btn btn-secondary text-[12px]"
+                onClick={() => setSupForm({ supplierId: "", supplierSku: "", supplierName: "", costPrice: 0, stock: 0 })}
+                data-testid="add-mapping-btn"
+              >
+                <Plus size={13} weight="bold" /> Ajouter un fournisseur
+              </button>
+            </div>
+            {supForm && (
+              <div className="border border-border p-3 mb-3 grid grid-cols-2 gap-2" data-testid="mapping-form">
+                <select className="input col-span-2" value={supForm.supplierId}
+                  onChange={(e) => { const s = suppliers.find((x) => x.id === e.target.value); setSupForm({ ...supForm, supplierId: e.target.value, supplierName: s?.name || "" }); }}
+                  data-testid="mapping-supplier-select">
+                  <option value="">— Choisir un fournisseur —</option>
+                  {suppliers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+                </select>
+                <input className="input input-mono" placeholder="SKU fournisseur" value={supForm.supplierSku} onChange={(e) => setSupForm({ ...supForm, supplierSku: e.target.value })} data-testid="mapping-sku" />
+                <input type="number" step="0.01" className="input input-mono" placeholder="Coût €" value={supForm.costPrice} onChange={(e) => setSupForm({ ...supForm, costPrice: e.target.value })} data-testid="mapping-cost" />
+                <input type="number" className="input input-mono" placeholder="Stock" value={supForm.stock} onChange={(e) => setSupForm({ ...supForm, stock: e.target.value })} />
+                <div className="col-span-2 flex justify-end gap-2">
+                  <button className="btn btn-secondary text-[12px]" onClick={() => setSupForm(null)}>Annuler</button>
+                  <button className="btn btn-primary text-[12px]" onClick={saveMapping} data-testid="mapping-save">Enregistrer</button>
+                </div>
+              </div>
+            )}
             <div className="table-wrap">
               <table className="data-table">
                 <thead>
@@ -478,9 +585,17 @@ function ProductDrawer({ product, onClose, onChanged }) {
                       <td className="num"><StockBadge stock={sp.stock} /></td>
                       <td className="num">{sp.leadTime?.min}-{sp.leadTime?.max}j</td>
                       <td>
-                        {best && sp.id === best.id && (
-                          <span className="badge badge-primary">Optimal</span>
-                        )}
+                        <div className="flex items-center gap-1">
+                          {best && sp.id === best.id && (
+                            <span className="badge badge-primary">Optimal</span>
+                          )}
+                          <button className="p-1 hover:bg-muted" onClick={() => setSupForm({ id: sp.id, supplierId: sp.supplierId, supplierSku: sp.supplierSku, supplierName: sp.supplierNameFull, costPrice: sp.costPrice, stock: sp.stock })} data-testid={`edit-mapping-${sp.id}`} aria-label="Modifier">
+                            <PencilSimple size={13} weight="bold" />
+                          </button>
+                          <button className="p-1 hover:bg-muted text-critical" onClick={() => delMapping(sp)} data-testid={`delete-mapping-${sp.id}`} aria-label="Retirer">
+                            <Trash size={13} weight="bold" />
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -519,6 +634,115 @@ function MetricBox({ label, value }) {
     <div className="metric" style={{ padding: 14 }}>
       <div className="metric-label">{label}</div>
       <div className="mono font-bold text-xl mt-1">{value}</div>
+    </div>
+  );
+}
+
+function ProductFormModal({ product, onClose, onSaved }) {
+  const isEdit = !!product?.id;
+  const [form, setForm] = useState({
+    sku: product?.sku || "",
+    name: product?.name || "",
+    category: product?.category || "",
+    brand: product?.brand || "",
+    description: product?.description || "",
+    image: product?.images?.[0] || "",
+    retailPrice: product?.retailPrice ?? 0,
+    stock: product?.stock ?? 0,
+    isActive: product?.isActive ?? true,
+  });
+  const [saving, setSaving] = useState(false);
+  const set = (k, v) => setForm({ ...form, [k]: v });
+
+  const submit = async () => {
+    if (!form.sku || !form.name) return toast.error("SKU et nom requis");
+    setSaving(true);
+    const payload = {
+      sku: form.sku, name: form.name,
+      category: form.category || null, brand: form.brand || null,
+      description: form.description || "",
+      images: form.image ? [form.image] : [],
+      retailPrice: Number(form.retailPrice) || 0,
+      stock: Number(form.stock) || 0,
+      isActive: form.isActive,
+    };
+    try {
+      if (isEdit) {
+        await api.put(`/products/${product.id}`, payload);
+        toast.success("Produit mis à jour");
+      } else {
+        await api.post("/products", payload);
+        toast.success("Produit créé");
+      }
+      onSaved();
+    } catch (e) {
+      toast.error(e.response?.data?.detail || "Erreur (SKU déjà existant ?)");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4" data-testid="product-form-modal">
+      <div className="absolute inset-0 bg-black/50" onClick={onClose} />
+      <div className="relative bg-white w-full max-w-xl max-h-[90vh] overflow-y-auto border border-border fade-up">
+        <div className="border-b border-border px-6 py-4 flex items-center justify-between">
+          <div className="h2">{isEdit ? "Modifier le produit" : "Nouveau produit"}</div>
+          <button className="p-2 hover:bg-muted" onClick={onClose}><X size={18} weight="bold" /></button>
+        </div>
+        <div className="p-6 space-y-4">
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="label">SKU</label>
+              <input className="input input-mono" value={form.sku} onChange={(e) => set("sku", e.target.value)} data-testid="product-sku" disabled={isEdit} />
+            </div>
+            <div>
+              <label className="label">Catégorie</label>
+              <select className="input" value={form.category} onChange={(e) => set("category", e.target.value)}>
+                <option value="">—</option>
+                {["Hygiène", "Soins", "Bain", "Repas", "Déplacement"].map((c) => <option key={c}>{c}</option>)}
+              </select>
+            </div>
+          </div>
+          <div>
+            <label className="label">Nom</label>
+            <input className="input" value={form.name} onChange={(e) => set("name", e.target.value)} data-testid="product-name" />
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="label">Marque</label>
+              <input className="input" value={form.brand} onChange={(e) => set("brand", e.target.value)} />
+            </div>
+            <div>
+              <label className="label">Image (URL)</label>
+              <input className="input input-mono" value={form.image} onChange={(e) => set("image", e.target.value)} placeholder="https://…" />
+            </div>
+            <div>
+              <label className="label">Prix de vente (€)</label>
+              <input type="number" step="0.01" className="input input-mono" value={form.retailPrice} onChange={(e) => set("retailPrice", e.target.value)} data-testid="product-price" />
+            </div>
+            <div>
+              <label className="label">Stock</label>
+              <input type="number" className="input input-mono" value={form.stock} onChange={(e) => set("stock", e.target.value)} />
+            </div>
+          </div>
+          <div>
+            <label className="label">Description</label>
+            <textarea className="input" rows={3} value={form.description} onChange={(e) => set("description", e.target.value)} />
+          </div>
+          <label className="flex items-center gap-2 text-sm">
+            <input type="checkbox" checked={form.isActive} onChange={(e) => set("isActive", e.target.checked)} />
+            Produit actif
+          </label>
+          {isEdit && <div className="text-[11px] text-muted-foreground">Astuce : le prix est recalculé par les règles si des fournisseurs sont mappés (onglet Détails).</div>}
+        </div>
+        <div className="border-t border-border px-6 py-4 flex justify-end gap-2">
+          <button className="btn btn-secondary" onClick={onClose}>Annuler</button>
+          <button className="btn btn-primary" onClick={submit} disabled={saving} data-testid="product-form-submit">
+            {saving ? "Enregistrement…" : (isEdit ? "Enregistrer" : "Créer")}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

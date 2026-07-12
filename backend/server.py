@@ -77,6 +77,7 @@ SCOPE_MAP = [
     ("POST", "/api/orders", "orders.write"),
     ("PUT", "/api/orders", "orders.write"),
     ("POST", "/api/orders/bulk-fulfill", "orders.write"),
+    ("DELETE", "/api/orders", "orders.write"),
     ("PUT", "/api/orders/{oid_}/payment", "orders.payment"),
     ("POST", "/api/orders/{oid_}/tracking", "orders.tracking"),
     ("GET", "/api/pricing-rules", "pricing_rules.read"),
@@ -213,7 +214,8 @@ async def refresh_product_aggregates(product_id: str):
     if not prod:
         return
     if not sps:
-        await db.products.update_one({"_id": oid(product_id)}, {"$set": {"costPrice": 0, "stock": 0, "retailPrice": 0}})
+        # Pas de fournisseur mappé : produit géré manuellement -> on conserve
+        # les valeurs saisies (prix/stock) au lieu de les remettre à zéro.
         return
     best_cost = min(sp["costPrice"] for sp in sps)
     total_stock = sum(sp.get("stock", 0) for sp in sps)
@@ -759,6 +761,12 @@ async def update_order(oid_: str, payload: dict, current=Depends(get_current_use
     await db.orders.update_one({**scope_q(current), "_id": oid(oid_)}, {"$set": payload})
     doc = await db.orders.find_one({"_id": oid(oid_)})
     return doc_to_json(doc)
+
+
+@app.delete("/api/orders/{oid_}")
+async def delete_order(oid_: str, current=Depends(get_current_user)):
+    await db.orders.delete_one({**scope_q(current), "_id": oid(oid_)})
+    return {"success": True}
 
 
 class BulkFulfillPayload(BaseModel):
