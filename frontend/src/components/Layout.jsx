@@ -2,7 +2,7 @@ import { NavLink, useNavigate, Link } from "react-router-dom";
 import { useEffect, useState } from "react";
 import {
   ChartLineUp, Package, Storefront, ShoppingBag, Percent, ArrowsClockwise,
-  BellRinging, SignOut, MagnifyingGlass, PlugsConnected, DownloadSimple, Robot,
+  BellRinging, SignOut, MagnifyingGlass, PlugsConnected, DownloadSimple, Robot, Key,
 } from "@phosphor-icons/react";
 import { useAuth } from "../lib/auth";
 import api from "../lib/api";
@@ -17,6 +17,7 @@ const links = [
   { to: "/regles-prix", label: "Règles de prix", icon: Percent, testid: "nav-pricing" },
   { to: "/woocommerce", label: "WooCommerce", icon: ArrowsClockwise, testid: "nav-woocommerce" },
   { to: "/automatisations", label: "Automatisations", icon: Robot, testid: "nav-automations" },
+  { to: "/cles-api", label: "Clés API", icon: Key, testid: "nav-api-keys" },
 ];
 
 export default function Layout({ children }) {

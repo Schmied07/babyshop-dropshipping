@@ -281,3 +281,6 @@ private/
 # !.github/
 # !.gitkeep
 # !IMPORTANT_README.md
+.env.*
+*.env
+.credentials

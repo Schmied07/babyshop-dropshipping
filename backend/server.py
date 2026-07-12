@@ -28,6 +28,10 @@ from catalog_import import parse_catalog, detect_columns, auto_suggest_mapping, 
 import woocommerce as wc  # noqa: E402
 import deepseek  # noqa: E402
 from scheduler import start_scheduler, sync_stocks_and_prices, import_woo_orders  # noqa: E402
+from api_keys import (  # noqa: E402
+    AVAILABLE_SCOPES, EVENT_TYPES, generate_api_key, generate_secret,
+    get_current_principal, require_scope, dispatch_event,
+)
 
 MONGO_URL = os.environ.get("MONGO_URL")
 DB_NAME = os.environ.get("DB_NAME")
@@ -35,7 +39,8 @@ DB_NAME = os.environ.get("DB_NAME")
 client = AsyncIOMotorClient(MONGO_URL)
 db = client[DB_NAME]
 
-app = FastAPI(title="EuropaDrop API", version="1.1.0")
+app = FastAPI(title="EuropaDrop API", version="1.2.0")
+app.state.db = db
 
 app.add_middleware(
     CORSMiddleware,
@@ -44,6 +49,102 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+# ---------- API Key scope enforcement middleware ----------
+# Maps URL path prefix + method → required scope
+SCOPE_MAP = [
+    # (method, path_pattern, scope)
+    ("GET", "/api/products", "products.read"),
+    ("POST", "/api/products", "products.write"),
+    ("PUT", "/api/products", "products.write"),
+    ("DELETE", "/api/products", "products.write"),
+    ("GET", "/api/suppliers", "suppliers.read"),
+    ("POST", "/api/suppliers", "suppliers.write"),
+    ("PUT", "/api/suppliers", "suppliers.write"),
+    ("DELETE", "/api/suppliers", "suppliers.write"),
+    ("GET", "/api/supplier-products", "supplier_products.read"),
+    ("POST", "/api/supplier-products", "supplier_products.write"),
+    ("PUT", "/api/supplier-products", "supplier_products.write"),
+    ("DELETE", "/api/supplier-products", "supplier_products.write"),
+    ("GET", "/api/orders", "orders.read"),
+    ("POST", "/api/orders", "orders.write"),
+    ("PUT", "/api/orders", "orders.write"),
+    ("POST", "/api/orders/bulk-fulfill", "orders.write"),
+    ("PUT", "/api/orders/{oid_}/payment", "orders.payment"),
+    ("POST", "/api/orders/{oid_}/tracking", "orders.tracking"),
+    ("GET", "/api/pricing-rules", "pricing_rules.read"),
+    ("POST", "/api/pricing-rules", "pricing_rules.write"),
+    ("PUT", "/api/pricing-rules", "pricing_rules.write"),
+    ("DELETE", "/api/pricing-rules", "pricing_rules.write"),
+    ("POST", "/api/catalog", "catalog.import"),
+    ("GET", "/api/catalog/history", "catalog.import"),
+    ("POST", "/api/woocommerce/sync", "sync.run"),
+    ("PUT", "/api/woocommerce/sync", "sync.run"),
+    ("GET", "/api/woocommerce/status", "sync.status"),
+    ("GET", "/api/woocommerce/orders", "sync.status"),
+    ("POST", "/api/ai/translate", "ai.translate"),
+    ("POST", "/api/ai/bulk-translate", "ai.translate"),
+    ("POST", "/api/ai/seo", "ai.seo"),
+    ("POST", "/api/ai/smart-mapping", "ai.mapping"),
+    ("GET", "/api/webhooks", "webhooks.manage"),
+    ("POST", "/api/webhooks", "webhooks.manage"),
+    ("GET", "/api/outbound-webhooks", "webhooks.manage"),
+    ("POST", "/api/outbound-webhooks", "webhooks.manage"),
+    ("PUT", "/api/outbound-webhooks", "webhooks.manage"),
+    ("DELETE", "/api/outbound-webhooks", "webhooks.manage"),
+    ("GET", "/api/notifications", "notifications.read"),
+    ("GET", "/api/dashboard", "dashboard.read"),
+]
+
+
+def _required_scope(method: str, path: str) -> Optional[str]:
+    for m, prefix, scope in SCOPE_MAP:
+        if method == m and path.startswith(prefix):
+            return scope
+    return None
+
+
+@app.middleware("http")
+async def api_key_scope_middleware(request: Request, call_next):
+    # Only enforce on /api/* paths with api_key auth
+    path = request.url.path
+    auth = request.headers.get("authorization", "")
+    if not (path.startswith("/api/") and auth.startswith("Bearer ed_")):
+        return await call_next(request)
+
+    # Extract key + look up scopes
+    token = auth.split(" ", 1)[1] if " " in auth else ""
+    if not token.startswith("ed_"):
+        return await call_next(request)
+    key_hash = hashlib.sha256(token.encode()).hexdigest()
+    api_key = await db.api_keys.find_one({"key_hash": key_hash, "revoked": {"$ne": True}})
+    if not api_key:
+        return await call_next(request)  # let auth reject with 401
+
+    scopes = set(api_key.get("scopes", []))
+    if "*" in scopes:
+        return await call_next(request)
+
+    required = _required_scope(request.method, path)
+    if required is None:
+        # Endpoint not in map — allow (e.g., /health, /auth/me)
+        return await call_next(request)
+
+    # Check scope with fallback: write grants read
+    if required not in scopes:
+        base = required.split(".")[0]
+        if required.endswith(".read") and f"{base}.write" in scopes:
+            return await call_next(request)
+        return JSONResponse(
+            status_code=403,
+            content={
+                "detail": f"Scope requis: {required}",
+                "current_scopes": sorted(scopes),
+                "hint": "Créez une nouvelle clé API avec ce scope, ou utilisez une clé avec '*'",
+            },
+        )
+    return await call_next(request)
 
 
 # ---------- Helpers ----------
@@ -106,6 +207,12 @@ async def refresh_product_aggregates(product_id: str):
                 "link": "/catalogue",
                 "read": False,
                 "createdAt": utc_now(),
+            })
+            # Fire outbound event
+            await dispatch_event(db, "low_stock", {
+                "productId": product_id, "sku": prod.get("sku"),
+                "name": prod.get("name"), "stock": total_stock,
+                "threshold": 10,
             })
 
 
@@ -667,6 +774,8 @@ async def set_tracking(oid_: str, payload: TrackingPayload, _=Depends(get_curren
         "trackingNumber": payload.trackingNumber, "trackingCarrier": payload.trackingCarrier,
         "status": "shipped", "fulfillmentStatus": "fulfilled", "updatedAt": utc_now(),
     }})
+    order = await db.orders.find_one({"_id": oid(oid_)})
+    await dispatch_event(db, "order.shipped", doc_to_json(order))
     return {"success": True}
 
 
@@ -892,6 +1001,9 @@ async def update_payment(oid_: str, payload: PaymentUpdate, _=Depends(get_curren
     if payload.paymentStatus == "paid":
         update["paidAt"] = utc_now()
     await db.orders.update_one({"_id": oid(oid_)}, {"$set": update})
+    if payload.paymentStatus == "paid":
+        order = await db.orders.find_one({"_id": oid(oid_)})
+        await dispatch_event(db, "order.paid", doc_to_json(order))
     return {"success": True}
 
 
@@ -987,20 +1099,28 @@ async def ai_bulk_translate(payload: BulkTranslatePayload, _=Depends(get_current
 
 
 # ========== WOOCOMMERCE WEBHOOKS ==========
-def _verify_wc_signature(body: bytes, signature: Optional[str]) -> bool:
+def _verify_wc_signature(body: bytes, signature: Optional[str], secret: str) -> bool:
     """Verify WooCommerce webhook HMAC-SHA256 signature."""
-    secret = os.environ.get("WP_WEBHOOK_SECRET", "")
     if not secret or not signature:
         return True  # Allow if secret not set (dev/test)
     expected = base64.b64encode(hmac.new(secret.encode(), body, hashlib.sha256).digest()).decode()
     return hmac.compare_digest(expected, signature)
 
 
+async def _get_webhook_secret() -> str:
+    """Fetch webhook secret from DB settings, fallback to env."""
+    doc = await db.app_settings.find_one({"key": "webhook_secret"})
+    if doc and doc.get("value"):
+        return doc["value"]
+    return os.environ.get("WP_WEBHOOK_SECRET", "")
+
+
 @app.post("/api/webhooks/woocommerce/orders")
 async def wc_webhook_orders(request: Request, x_wc_webhook_signature: Optional[str] = Header(None)):
     """Receive order.created/updated webhook from WooCommerce."""
     body = await request.body()
-    if not _verify_wc_signature(body, x_wc_webhook_signature):
+    secret = await _get_webhook_secret()
+    if not _verify_wc_signature(body, x_wc_webhook_signature, secret):
         raise HTTPException(401, "Invalid signature")
     try:
         wp_order = await request.json()
@@ -1044,6 +1164,12 @@ async def wc_webhook_orders(request: Request, x_wc_webhook_signature: Optional[s
             "message": f"Commande WP-{wp_id} de {doc['customerName']} · {doc['total']}€",
             "link": "/commandes", "read": False, "createdAt": utc_now(),
         })
+        # Dispatch outbound event
+        created_doc = await db.orders.find_one({"_id": result.upserted_id})
+        await dispatch_event(db, "order.created", doc_to_json(created_doc))
+    else:
+        updated_doc = await db.orders.find_one({"wpOrderId": wp_id})
+        await dispatch_event(db, "order.updated", doc_to_json(updated_doc))
     return {"received": True, "created": bool(result.upserted_id), "updated": not result.upserted_id}
 
 
@@ -1051,15 +1177,194 @@ async def wc_webhook_orders(request: Request, x_wc_webhook_signature: Optional[s
 async def wc_webhook_info(_=Depends(get_current_user)):
     """Returns webhook URL + secret to configure in WooCommerce admin."""
     base = os.environ.get("APP_URL", "").rstrip("/")
+    secret = await _get_webhook_secret()
     return {
         "url": f"{base}/api/webhooks/woocommerce/orders",
-        "secret": os.environ.get("WP_WEBHOOK_SECRET", ""),
+        "secret": secret,
         "events": ["order.created", "order.updated"],
         "instructions": (
             "Dans WordPress Admin : WooCommerce → Réglages → Avancé → Webhooks → Ajouter. "
             "Utiliser l'URL et le secret ci-dessus. Sujet : Commande créée + Commande mise à jour. "
             "Version API : WP REST API Integration v3."
         ),
+    }
+
+
+@app.post("/api/webhooks/woocommerce/regenerate-secret")
+async def wc_regenerate_secret(_=Depends(get_current_user)):
+    """Generate a new webhook secret, store it, return it."""
+    new_secret = generate_secret()
+    await db.app_settings.update_one(
+        {"key": "webhook_secret"},
+        {"$set": {"key": "webhook_secret", "value": new_secret, "updatedAt": utc_now()}},
+        upsert=True,
+    )
+    base = os.environ.get("APP_URL", "").rstrip("/")
+    return {
+        "success": True,
+        "secret": new_secret,
+        "url": f"{base}/api/webhooks/woocommerce/orders",
+        "message": "Nouveau secret généré. Mettez-le à jour dans WordPress → WooCommerce → Webhooks.",
+    }
+
+
+# ========== API KEYS (scoped external access — Claude, n8n, etc.) ==========
+class ApiKeyCreate(BaseModel):
+    name: str
+    scopes: List[str]
+    description: Optional[str] = None
+
+
+@app.get("/api/api-keys")
+async def list_api_keys(_=Depends(get_current_user)):
+    docs = await db.api_keys.find().sort("createdAt", -1).to_list(None)
+    result = []
+    for d in docs:
+        d = doc_to_json(d)
+        d.pop("key_hash", None)
+        result.append(d)
+    return {"success": True, "data": result, "available_scopes": AVAILABLE_SCOPES}
+
+
+@app.post("/api/api-keys")
+async def create_api_key(payload: ApiKeyCreate, _=Depends(get_current_user)):
+    invalid = [s for s in payload.scopes if s not in AVAILABLE_SCOPES]
+    if invalid:
+        raise HTTPException(400, f"Scopes invalides: {invalid}")
+    raw, key_hash = generate_api_key()
+    doc = {
+        "name": payload.name,
+        "description": payload.description,
+        "key_hash": key_hash,
+        "keyPrefix": raw[:12] + "…",
+        "scopes": payload.scopes,
+        "revoked": False,
+        "createdAt": utc_now(),
+        "lastUsedAt": None,
+    }
+    r = await db.api_keys.insert_one(doc)
+    return {
+        "success": True, "id": str(r.inserted_id), "name": payload.name,
+        "key": raw, "keyPrefix": doc["keyPrefix"], "scopes": payload.scopes,
+        "warning": "Copiez cette clé maintenant. Elle ne sera plus jamais affichée.",
+    }
+
+
+@app.post("/api/api-keys/{kid}/revoke")
+async def revoke_api_key(kid: str, _=Depends(get_current_user)):
+    await db.api_keys.update_one({"_id": oid(kid)}, {"$set": {"revoked": True, "revokedAt": utc_now()}})
+    return {"success": True}
+
+
+@app.delete("/api/api-keys/{kid}")
+async def delete_api_key(kid: str, _=Depends(get_current_user)):
+    await db.api_keys.delete_one({"_id": oid(kid)})
+    return {"success": True}
+
+
+@app.get("/api/api-keys/scopes")
+async def list_scopes(_=Depends(get_current_user)):
+    return {"scopes": AVAILABLE_SCOPES}
+
+
+# ========== OUTBOUND WEBHOOKS (n8n, Zapier, Make) ==========
+class OutboundWebhookCreate(BaseModel):
+    name: str
+    url: str
+    events: List[str]
+    active: bool = True
+
+
+@app.get("/api/outbound-webhooks")
+async def list_outbound(_=Depends(get_current_user)):
+    docs = await db.outbound_webhooks.find().sort("createdAt", -1).to_list(None)
+    return {
+        "success": True, "data": [doc_to_json(d) for d in docs],
+        "available_events": EVENT_TYPES,
+    }
+
+
+@app.post("/api/outbound-webhooks")
+async def create_outbound(payload: OutboundWebhookCreate, _=Depends(get_current_user)):
+    invalid = [e for e in payload.events if e not in EVENT_TYPES]
+    if invalid:
+        raise HTTPException(400, f"Événements inconnus: {invalid}")
+    secret = generate_secret()
+    doc = {
+        "name": payload.name, "url": payload.url, "events": payload.events,
+        "active": payload.active, "secret": secret,
+        "deliveryCount": 0, "errorCount": 0,
+        "lastFiredAt": None, "lastStatus": None, "lastError": None,
+        "createdAt": utc_now(),
+    }
+    r = await db.outbound_webhooks.insert_one(doc)
+    doc["_id"] = r.inserted_id
+    return doc_to_json(doc)
+
+
+@app.put("/api/outbound-webhooks/{wid}")
+async def update_outbound(wid: str, payload: dict, _=Depends(get_current_user)):
+    payload.pop("secret", None)
+    payload.pop("createdAt", None)
+    await db.outbound_webhooks.update_one({"_id": oid(wid)}, {"$set": payload})
+    doc = await db.outbound_webhooks.find_one({"_id": oid(wid)})
+    return doc_to_json(doc)
+
+
+@app.delete("/api/outbound-webhooks/{wid}")
+async def delete_outbound(wid: str, _=Depends(get_current_user)):
+    await db.outbound_webhooks.delete_one({"_id": oid(wid)})
+    return {"success": True}
+
+
+@app.post("/api/outbound-webhooks/{wid}/test")
+async def test_outbound(wid: str, _=Depends(get_current_user)):
+    doc = await db.outbound_webhooks.find_one({"_id": oid(wid)})
+    if not doc:
+        raise HTTPException(404, "Webhook non trouvé")
+    import httpx, json as _json, hmac as _hmac, hashlib as _hashlib
+    body = _json.dumps({
+        "event": "test", "timestamp": utc_now().isoformat(),
+        "data": {"message": "Ping de test depuis EuropaDrop"},
+    })
+    headers = {"Content-Type": "application/json", "X-Event-Type": "test"}
+    if doc.get("secret"):
+        sig = _hmac.new(doc["secret"].encode(), body.encode(), _hashlib.sha256).hexdigest()
+        headers["X-EuropaDrop-Signature"] = sig
+    try:
+        async with httpx.AsyncClient(timeout=10) as c:
+            r = await c.post(doc["url"], content=body, headers=headers)
+        ok = r.status_code < 400
+        await db.outbound_webhooks.update_one(
+            {"_id": oid(wid)},
+            {"$set": {
+                "lastFiredAt": utc_now(), "lastStatus": r.status_code,
+                "lastError": None if ok else r.text[:300],
+            }},
+        )
+        return {"success": ok, "status_code": r.status_code, "response": r.text[:300]}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
+# ========== n8n / OpenAPI integration helper ==========
+@app.get("/api/integrations/n8n/info")
+async def n8n_info(_=Depends(get_current_user)):
+    """Instructions + endpoints to connect n8n."""
+    base = os.environ.get("APP_URL", "").rstrip("/")
+    return {
+        "swagger_docs": f"{base}/docs",
+        "openapi_spec": f"{base}/openapi.json",
+        "api_base": f"{base}/api",
+        "auth_method": "Bearer API key (préfixe ed_)",
+        "example_curl": f"curl -H 'Authorization: Bearer ed_YOUR_KEY' {base}/api/products",
+        "steps": [
+            "1) Dans EuropaDrop, créez une clé API scopée (Clés API → Nouvelle clé).",
+            "2) Dans n8n, ajoutez un HTTP Request node.",
+            "3) Authentication : Header Auth. Name : Authorization. Value : Bearer ed_VOTRE_CLE",
+            "4) Base URL : " + base + "/api",
+            "5) Pour recevoir des événements EuropaDrop dans n8n : créez un Webhook trigger dans n8n, puis un webhook sortant dans EuropaDrop pointant vers son URL.",
+        ],
     }
 
 
