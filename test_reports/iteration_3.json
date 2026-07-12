@@ -3,7 +3,7 @@
   "backend_issues": {
     "critical": [],
     "minor": [
-      {"endpoint": "backend/.env", "issue": "APP_URL was NOT set. Without it, GET /api/integrations/n8n/info returned relative paths ('/api/docs' instead of 'https://…/api/docs') and /api/webhooks/woocommerce/info also returned a broken absolute URL. Fixed by appending APP_URL=https://full-stack-app-108.preview.emergentagent.com to /app/backend/.env and restarting backend."},
+      {"endpoint": "backend/.env", "issue": "APP_URL was NOT set. Without it, GET /api/integrations/n8n/info returned relative paths ('/api/docs' instead of 'https://…/api/docs') and /api/webhooks/woocommerce/info also returned a broken absolute URL. Fixed by appending APP_URL=https://command-palette-8.preview.emergentagent.com to /app/backend/.env and restarting backend."},
       {"endpoint": "PUT /api/users/{uid}", "issue": "Endpoint returns {success:true} even when a non-admin attempts to change their own role — the role field is silently stripped (correct behaviour), but there is no explicit 400/403 to signal rejection. Not a bug, just UX-invisible. Behaviour verified: operator PUT /users/{self} with role=admin returns 200 and role stays 'operator'."},
       {"endpoint": "POST /api/stores", "issue": "When WooCommerce URL is unreachable (DNS fail), the store is still created (per spec: non-blocking). Warning message includes raw exception ('[Errno -2] Name or service not known') which is user-visible. Consider a friendlier message."}
     ]
@@ -18,7 +18,7 @@
     "/app/test_reports/pytest/pytest_v13.xml"
   ],
   "action_items": [
-    "IMPORTANT: APP_URL env var was missing. Testing agent added APP_URL=https://full-stack-app-108.preview.emergentagent.com to /app/backend/.env. Main agent should decide whether to persist this in the source or auto-detect base URL another way (e.g., from request headers) so the app is portable across deployments.",
+    "IMPORTANT: APP_URL env var was missing. Testing agent added APP_URL=https://command-palette-8.preview.emergentagent.com to /app/backend/.env. Main agent should decide whether to persist this in the source or auto-detect base URL another way (e.g., from request headers) so the app is portable across deployments.",
     "OPTIONAL: When store connection fails at creation, replace raw exception string with a user-friendly French message (e.g., 'URL introuvable — vérifiez le domaine')."
   ],
   "critical_code_review_comments": [

@@ -11,7 +11,7 @@
 - **Role**: operator
 
 ## Backend URL
-- Preview: https://4916847c-9ba6-4e35-b640-815ca72d3104.preview.emergentagent.com
+- Preview: https://command-palette-8.preview.emergentagent.com
 - API base: {URL}/api
 - Swagger: {URL}/api/docs
 - OpenAPI JSON: {URL}/api/openapi.json
