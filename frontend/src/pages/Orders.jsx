@@ -171,7 +171,19 @@ export default function Orders() {
                     </td>
                     <td className="num">{o.items?.length || 0}</td>
                     <td className="num font-bold">{fmtEUR(o.total)}</td>
-                    <td><StatusBadge status={o.status} /></td>
+                    <td>
+                      <div className="flex flex-col gap-1 items-start">
+                        <StatusBadge status={o.status} />
+                        <select
+                          className="input w-auto text-[10px] py-0.5"
+                          value={o.status}
+                          onChange={(e) => changeStatus(o, e.target.value)}
+                          data-testid={`status-select-${o.orderNumber}`}
+                        >
+                          {STATUSES.map((s) => <option key={s} value={s}>{STATUS_LABELS[s]}</option>)}
+                        </select>
+                      </div>
+                    </td>
                     <td>
                       <PaymentBadge status={o.paymentStatus || "unpaid"} />
                       {o.paymentMethod && <div className="text-[10px] mono text-muted-foreground mt-0.5">{o.paymentMethod}</div>}
@@ -187,13 +199,24 @@ export default function Orders() {
                     </td>
                     <td className="text-xs">{fmtDate(o.createdAt)}</td>
                     <td>
-                      <button
-                        className="btn btn-ghost text-[11px] py-1 px-2"
-                        onClick={() => setDetailOrder(o)}
-                        data-testid={`view-order-${o.orderNumber}`}
-                      >
-                        <ArrowRight size={14} weight="bold" />
-                      </button>
+                      <div className="flex items-center gap-1">
+                        <button
+                          className="btn btn-ghost text-[11px] py-1 px-2"
+                          onClick={() => setDetailOrder(o)}
+                          data-testid={`view-order-${o.orderNumber}`}
+                          aria-label="Détails"
+                        >
+                          <ArrowRight size={14} weight="bold" />
+                        </button>
+                        <button
+                          className="btn btn-ghost text-[11px] py-1 px-2 text-critical"
+                          onClick={() => del(o)}
+                          data-testid={`delete-order-${o.orderNumber}`}
+                          aria-label="Supprimer"
+                        >
+                          <Trash size={14} weight="bold" />
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}

@@ -1,9 +1,12 @@
 # EuropaDrop — Credentials
 
-## Admin (superadmin, seeded)
+## Admin (Atlas prod DB `europadrop` — user-managed)
+- **Email**: admin@creook.fr  (mot de passe géré par l'utilisateur, inconnu de l'agent)
+
+## Admin (seed local par défaut — pour tests en sandbox)
 - **Email**: admin@marcherbien.fr
 - **Password**: Admin1234!
-- **Role**: admin (sees ALL data across users)
+- **Role**: admin (voit toutes les données)
 
 ## Operator (test user — create via POST /api/users as admin if missing)
 - **Email**: operator@marcherbien.fr
@@ -25,5 +28,7 @@
 - Bulk AI action returns {success:false, configured:false, message:...} when key missing (by design).
 
 ## Notes
-- backend/.env and frontend/.env were recreated after an environment reset (they are gitignored).
-- pydantic-core pinned to 2.23.4 to match pydantic 2.9.2.
+- Le preview pointe vers le **MongoDB Atlas de l'utilisateur** (`europadrop`). Pour tester sans polluer la prod, basculer temporairement `backend/.env` vers `mongodb://localhost:27017` + `DB_NAME=europadrop_sandbox`, `python seed.py`, puis restaurer Atlas.
+- backend/.env et frontend/.env sont gitignored (recréés après reset d'environnement).
+- pydantic-core épinglé à 2.23.4 pour matcher pydantic 2.9.2.
+- Fichiers de déploiement VPS : dossier `/app/deploy/` + `docker-compose.yml` racine (EuropaDrop FastAPI+React ; les anciens fichiers Node « Babyshop » ont été supprimés).

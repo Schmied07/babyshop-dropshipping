@@ -1,4 +1,14 @@
-# EuropaDrop — PRD v1.4
+# EuropaDrop — PRD v1.5
+
+## Tech Stack
+### v1.5 (session 6 — CRUD complet UI + déploiement VPS, juillet 2026)
+- **CRUD Produits** dans Catalogue : bouton « Nouveau produit », modal créer/modifier, boutons éditer/supprimer par ligne
+- **CRUD Mappings fournisseurs** dans le drawer produit : ajouter / modifier / retirer un fournisseur mappé
+- **CRUD Commandes** : « Nouvelle commande » (modal + lignes d'articles), changement de statut inline (select), suppression par ligne (+ endpoint `DELETE /api/orders/{id}`)
+- **Suppression Fournisseurs** : bouton supprimer + modifier sur chaque carte
+- 🔧 Fix : `refresh_product_aggregates` préserve désormais le prix/stock **saisis manuellement** quand aucun fournisseur n'est mappé
+- 🚀 **Déploiement VPS** : dossier `/app/deploy/` + `docker-compose.yml` racine corrigé ; suppression des anciens fichiers legacy Node « Babyshop »
+- ☁️ Preview branché sur le **MongoDB Atlas de l'utilisateur** (base `europadrop`, admin `admin@creook.fr`)
 
 ## Problem Statement (original, verbatim)
 > "je veux que tu completes les fonctionalité pour que l'aplication fonctionne comme dsers mais en mieux"
