@@ -39,7 +39,13 @@ DB_NAME = os.environ.get("DB_NAME")
 client = AsyncIOMotorClient(MONGO_URL)
 db = client[DB_NAME]
 
-app = FastAPI(title="EuropaDrop API", version="1.2.0")
+app = FastAPI(
+    title="EuropaDrop API",
+    version="1.3.0",
+    docs_url="/api/docs",
+    redoc_url="/api/redoc",
+    openapi_url="/api/openapi.json",
+)
 app.state.db = db
 
 app.add_middleware(
@@ -782,76 +788,112 @@ async def set_tracking(oid_: str, payload: TrackingPayload, _=Depends(get_curren
 # ========== WOOCOMMERCE SYNC ==========
 @app.get("/api/woocommerce/status")
 async def woo_status(_=Depends(get_current_user)):
-    if not wc.is_configured():
-        return {"configured": False}
+    stores_count = await db.stores.count_documents({"isActive": True})
+    legacy = wc.is_configured()
+    if not stores_count and not legacy:
+        return {"configured": False, "stores_count": 0}
+    reachable = False
     try:
-        r = await wc.wc_get("/products", params={"per_page": 1})
-        return {"configured": True, "reachable": r.status_code < 400, "status_code": r.status_code}
-    except Exception as e:
-        return {"configured": True, "reachable": False, "error": str(e)}
+        creds = wc._default_creds()
+        if stores_count:
+            s = await db.stores.find_one({"isActive": True})
+            if s:
+                creds = {"url": s["url"], "key": s["key"], "secret": s["secret"]}
+        if creds:
+            r = await wc.wc_get("/products", params={"per_page": 1}, creds=creds)
+            reachable = r.status_code < 400
+    except Exception:
+        reachable = False
+    return {
+        "configured": True,
+        "stores_count": stores_count,
+        "legacy_env_configured": legacy,
+        "reachable": reachable,
+    }
 
 
 @app.post("/api/woocommerce/sync-product/{pid}")
-async def woo_sync_product(pid: str, _=Depends(get_current_user)):
-    return await woo_sync_product_internal(pid)
+async def woo_sync_product(pid: str, store_id: Optional[str] = None, _=Depends(get_current_user)):
+    return await woo_sync_product_internal(pid, store_id)
 
 
-async def woo_sync_product_internal(pid: str):
+async def _get_target_stores(store_id: Optional[str] = None) -> list:
+    """Return list of stores to sync to (specific or all active)."""
+    stores = []
+    if store_id:
+        s = await db.stores.find_one({"_id": oid(store_id)})
+        if s and s.get("isActive"):
+            stores.append(s)
+    else:
+        async for s in db.stores.find({"isActive": True}):
+            stores.append(s)
+    # Fallback to env legacy store
+    if not stores and wc.is_configured():
+        creds = wc._default_creds()
+        stores.append({"_id": None, "name": "default", "url": creds["url"], "key": creds["key"], "secret": creds["secret"]})
+    return stores
+
+
+async def woo_sync_product_internal(pid: str, store_id: Optional[str] = None):
     prod = await db.products.find_one({"_id": oid(pid)})
     if not prod:
         raise HTTPException(404, "Produit non trouvé")
-    if not wc.is_configured():
-        # Mock success
-        await db.product_mappings.update_one(
-            {"internalProductId": pid},
-            {"$set": {
-                "internalProductId": pid, "wpProductId": 90000 + int(str(prod["_id"])[-4:], 16) % 10000,
-                "wpSku": prod.get("sku"), "wpStatus": "publish", "wpPrice": prod.get("retailPrice", 0),
-                "wpStock": prod.get("stock", 0), "syncedAt": utc_now(), "lastSyncStatus": "mocked",
-            }},
-            upsert=True,
-        )
-        return {"success": True, "mocked": True, "message": "Synchronisation simulée (mock)"}
 
-    payload = {
-        "name": prod.get("name"),
-        "type": "simple",
-        "regular_price": str(prod.get("retailPrice", 0)),
-        "description": prod.get("description", ""),
-        "sku": prod.get("sku"),
-        "manage_stock": True,
-        "stock_quantity": prod.get("stock", 0),
-        "status": "publish",
-        "images": [{"src": u} for u in prod.get("images", []) if u],
-    }
-    mapping = await db.product_mappings.find_one({"internalProductId": pid})
-    try:
-        if mapping and mapping.get("wpProductId"):
-            r = await wc.wc_put(f"/products/{mapping['wpProductId']}", payload)
-        else:
-            r = await wc.wc_post("/products", payload)
-        if r.status_code >= 400:
-            err = r.text[:300]
+    stores = await _get_target_stores(store_id)
+    if not stores:
+        return {"success": False, "error": "Aucune boutique configurée"}
+
+    results = []
+    for store in stores:
+        creds = {"url": store["url"], "key": store["key"], "secret": store["secret"]}
+        sid = str(store["_id"]) if store.get("_id") else None
+        payload = {
+            "name": prod.get("name"), "type": "simple",
+            "regular_price": str(prod.get("retailPrice", 0)),
+            "description": prod.get("description", ""),
+            "sku": prod.get("sku"), "manage_stock": True,
+            "stock_quantity": prod.get("stock", 0), "status": "publish",
+            "images": [{"src": u} for u in prod.get("images", []) if u],
+        }
+        mapping_query = {"internalProductId": pid}
+        if sid:
+            mapping_query["storeId"] = sid
+        mapping = await db.product_mappings.find_one(mapping_query)
+        try:
+            if mapping and mapping.get("wpProductId"):
+                r = await wc.wc_put(f"/products/{mapping['wpProductId']}", payload, creds=creds)
+            else:
+                r = await wc.wc_post("/products", payload, creds=creds)
+            if r.status_code >= 400:
+                err = r.text[:300]
+                await db.product_mappings.update_one(
+                    mapping_query,
+                    {"$set": {**mapping_query, "storeId": sid, "storeName": store.get("name"),
+                             "lastSyncStatus": "error", "lastSyncError": err, "syncedAt": utc_now()}},
+                    upsert=True,
+                )
+                results.append({"store": store.get("name"), "success": False, "error": err})
+                continue
+            data = r.json()
             await db.product_mappings.update_one(
-                {"internalProductId": pid},
-                {"$set": {"internalProductId": pid, "lastSyncStatus": "error", "lastSyncError": err, "syncedAt": utc_now()}},
+                mapping_query,
+                {"$set": {
+                    **mapping_query, "storeId": sid, "storeName": store.get("name"),
+                    "wpProductId": data.get("id"), "wpSku": data.get("sku"),
+                    "wpStatus": data.get("status"), "wpPrice": float(data.get("price", 0) or 0),
+                    "wpStock": data.get("stock_quantity") or 0,
+                    "syncedAt": utc_now(), "lastSyncStatus": "success", "lastSyncError": None,
+                }},
                 upsert=True,
             )
-            return {"success": False, "error": err}
-        data = r.json()
-        await db.product_mappings.update_one(
-            {"internalProductId": pid},
-            {"$set": {
-                "internalProductId": pid, "wpProductId": data.get("id"), "wpSku": data.get("sku"),
-                "wpStatus": data.get("status"), "wpPrice": float(data.get("price", 0) or 0),
-                "wpStock": data.get("stock_quantity") or 0,
-                "syncedAt": utc_now(), "lastSyncStatus": "success", "lastSyncError": None,
-            }},
-            upsert=True,
-        )
-        return {"success": True, "wpProductId": data.get("id")}
-    except Exception as e:
-        return {"success": False, "error": str(e)}
+            results.append({"store": store.get("name"), "success": True, "wpProductId": data.get("id")})
+            await dispatch_event(db, "product.published", {
+                "productId": pid, "storeId": sid, "wpProductId": data.get("id"),
+            })
+        except Exception as e:
+            results.append({"store": store.get("name"), "success": False, "error": str(e)})
+
+    return {"success": any(r["success"] for r in results), "results": results}
 
 
 @app.post("/api/woocommerce/sync-all")
@@ -1353,8 +1395,8 @@ async def n8n_info(_=Depends(get_current_user)):
     """Instructions + endpoints to connect n8n."""
     base = os.environ.get("APP_URL", "").rstrip("/")
     return {
-        "swagger_docs": f"{base}/docs",
-        "openapi_spec": f"{base}/openapi.json",
+        "swagger_docs": f"{base}/api/docs",
+        "openapi_spec": f"{base}/api/openapi.json",
         "api_base": f"{base}/api",
         "auth_method": "Bearer API key (préfixe ed_)",
         "example_curl": f"curl -H 'Authorization: Bearer ed_YOUR_KEY' {base}/api/products",
@@ -1366,6 +1408,146 @@ async def n8n_info(_=Depends(get_current_user)):
             "5) Pour recevoir des événements EuropaDrop dans n8n : créez un Webhook trigger dans n8n, puis un webhook sortant dans EuropaDrop pointant vers son URL.",
         ],
     }
+
+
+# ========== STORES (multi-boutique WooCommerce) ==========
+class StoreCreate(BaseModel):
+    name: str
+    url: str  # e.g. https://marcherbien.fr/wp-json/wc/v3
+    key: str  # consumer key
+    secret: str  # consumer secret
+    isDefault: bool = False
+    isActive: bool = True
+
+
+@app.get("/api/stores")
+async def list_stores(_=Depends(get_current_user)):
+    docs = await db.stores.find().sort("createdAt", -1).to_list(None)
+    result = []
+    for d in docs:
+        j = doc_to_json(d)
+        j.pop("secret", None)  # never expose secret
+        j["keyPreview"] = (j.get("key") or "")[:10] + "…"
+        j.pop("key", None)
+        result.append(j)
+    # Also expose legacy env store info if present
+    legacy = wc._default_creds()
+    return {"success": True, "data": result, "legacy_env_configured": bool(legacy)}
+
+
+@app.post("/api/stores")
+async def create_store(payload: StoreCreate, _=Depends(get_current_user)):
+    # Test creds (non-blocking — save with warning if fail)
+    test = await wc.test_connection({"url": payload.url.rstrip("/"), "key": payload.key, "secret": payload.secret})
+
+    if payload.isDefault:
+        await db.stores.update_many({}, {"$set": {"isDefault": False}})
+    doc = {
+        "name": payload.name, "url": payload.url.rstrip("/"),
+        "key": payload.key, "secret": payload.secret,
+        "isDefault": payload.isDefault, "isActive": payload.isActive,
+        "createdAt": utc_now(), "lastTestedAt": utc_now(),
+        "lastTestStatus": "success" if test["reachable"] else "error",
+        "lastTestError": test.get("error"),
+    }
+    r = await db.stores.insert_one(doc)
+    return {
+        "success": True, "id": str(r.inserted_id), "test": test,
+        "warning": None if test["reachable"] else f"Boutique enregistrée mais connexion échouée : {test.get('error', '')}",
+    }
+
+
+@app.put("/api/stores/{sid}")
+async def update_store(sid: str, payload: dict, _=Depends(get_current_user)):
+    if payload.get("isDefault"):
+        await db.stores.update_many({}, {"$set": {"isDefault": False}})
+    payload["updatedAt"] = utc_now()
+    await db.stores.update_one({"_id": oid(sid)}, {"$set": payload})
+    return {"success": True}
+
+
+@app.post("/api/stores/{sid}/test")
+async def test_store(sid: str, _=Depends(get_current_user)):
+    s = await db.stores.find_one({"_id": oid(sid)})
+    if not s:
+        raise HTTPException(404, "Boutique non trouvée")
+    result = await wc.test_connection({"url": s["url"], "key": s["key"], "secret": s["secret"]})
+    await db.stores.update_one({"_id": oid(sid)}, {"$set": {
+        "lastTestedAt": utc_now(),
+        "lastTestStatus": "success" if result["reachable"] else "error",
+        "lastTestError": result.get("error"),
+    }})
+    return result
+
+
+@app.delete("/api/stores/{sid}")
+async def delete_store(sid: str, _=Depends(get_current_user)):
+    await db.stores.delete_one({"_id": oid(sid)})
+    # Also delete related mappings
+    await db.product_mappings.delete_many({"storeId": sid})
+    return {"success": True}
+
+
+# ========== USERS (multi-user management) ==========
+class UserInvite(BaseModel):
+    email: str
+    name: str
+    password: str
+    role: str = "operator"  # admin | operator
+
+
+@app.get("/api/users")
+async def list_users(current=Depends(get_current_user)):
+    if current.get("role") != "admin":
+        raise HTTPException(403, "Réservé aux admins")
+    docs = await db.users.find().sort("created_at", -1).to_list(None)
+    result = []
+    for d in docs:
+        d.pop("password_hash", None)
+        result.append(doc_to_json(d))
+    return {"success": True, "data": result}
+
+
+@app.post("/api/users")
+async def create_user(payload: UserInvite, current=Depends(get_current_user)):
+    if current.get("role") != "admin":
+        raise HTTPException(403, "Réservé aux admins")
+    if payload.role not in ("admin", "operator"):
+        raise HTTPException(400, "Rôle doit être 'admin' ou 'operator'")
+    if await db.users.find_one({"email": payload.email}):
+        raise HTTPException(400, "Email déjà utilisé")
+    doc = {
+        "email": payload.email, "name": payload.name,
+        "password_hash": hash_password(payload.password),
+        "role": payload.role, "created_at": utc_now(),
+        "createdBy": current["id"],
+    }
+    r = await db.users.insert_one(doc)
+    return {"success": True, "id": str(r.inserted_id)}
+
+
+@app.put("/api/users/{uid}")
+async def update_user(uid: str, payload: dict, current=Depends(get_current_user)):
+    if current.get("role") != "admin" and current["id"] != uid:
+        raise HTTPException(403, "Non autorisé")
+    # Prevent role escalation if not admin
+    if current.get("role") != "admin":
+        payload.pop("role", None)
+    if "password" in payload and payload["password"]:
+        payload["password_hash"] = hash_password(payload["password"])
+    payload.pop("password", None)
+    await db.users.update_one({"_id": oid(uid)}, {"$set": payload})
+    return {"success": True}
+
+
+@app.delete("/api/users/{uid}")
+async def delete_user(uid: str, current=Depends(get_current_user)):
+    if current.get("role") != "admin":
+        raise HTTPException(403, "Réservé aux admins")
+    if uid == current["id"]:
+        raise HTTPException(400, "Vous ne pouvez pas vous supprimer vous-même")
+    await db.users.delete_one({"_id": oid(uid)})
+    return {"success": True}
 
 
 # ========== CRON SCHEDULER CONTROL ==========

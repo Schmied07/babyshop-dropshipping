@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import {
   ChartLineUp, Package, Storefront, ShoppingBag, Percent, ArrowsClockwise,
   BellRinging, SignOut, MagnifyingGlass, PlugsConnected, DownloadSimple, Robot, Key,
+  Users as UsersIcon, Buildings,
 } from "@phosphor-icons/react";
 import { useAuth } from "../lib/auth";
 import api from "../lib/api";
@@ -16,8 +17,10 @@ const links = [
   { to: "/import", label: "Import catalogue", icon: DownloadSimple, testid: "nav-import" },
   { to: "/regles-prix", label: "Règles de prix", icon: Percent, testid: "nav-pricing" },
   { to: "/woocommerce", label: "WooCommerce", icon: ArrowsClockwise, testid: "nav-woocommerce" },
+  { to: "/boutiques", label: "Boutiques WP", icon: Buildings, testid: "nav-stores" },
   { to: "/automatisations", label: "Automatisations", icon: Robot, testid: "nav-automations" },
   { to: "/cles-api", label: "Clés API", icon: Key, testid: "nav-api-keys" },
+  { to: "/utilisateurs", label: "Utilisateurs", icon: UsersIcon, testid: "nav-users" },
 ];
 
 export default function Layout({ children }) {

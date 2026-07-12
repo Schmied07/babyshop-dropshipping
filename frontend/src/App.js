@@ -13,6 +13,8 @@ import WooCommerce from "./pages/WooCommerce";
 import Notifications from "./pages/Notifications";
 import Automations from "./pages/Automations";
 import ApiKeys from "./pages/ApiKeys";
+import Stores from "./pages/Stores";
+import Users from "./pages/Users";
 
 function PrivateRoute({ children }) {
   const { user, loading } = useAuth();
@@ -42,6 +44,8 @@ export default function App() {
           <Route path="/woocommerce" element={<PrivateRoute><WooCommerce /></PrivateRoute>} />
           <Route path="/automatisations" element={<PrivateRoute><Automations /></PrivateRoute>} />
           <Route path="/cles-api" element={<PrivateRoute><ApiKeys /></PrivateRoute>} />
+          <Route path="/boutiques" element={<PrivateRoute><Stores /></PrivateRoute>} />
+          <Route path="/utilisateurs" element={<PrivateRoute><Users /></PrivateRoute>} />
           <Route path="/notifications" element={<PrivateRoute><Notifications /></PrivateRoute>} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>

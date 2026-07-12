@@ -1,0 +1,45 @@
+{
+  "summary": "v1.3 backend + frontend testing (docs bug fix, multi-store, multi-user). 21/21 new pytest tests PASS. All requested frontend flows verified end-to-end: sidebar links present, /boutiques create/list/badge/keyPreview/no-secret-leak working, /utilisateurs table + role modal working, operator RBAC guard shows correctly. NOTE: had to add APP_URL to backend/.env — it was missing which broke n8n_info absolute URLs.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "backend/.env", "issue": "APP_URL was NOT set. Without it, GET /api/integrations/n8n/info returned relative paths ('/api/docs' instead of 'https://…/api/docs') and /api/webhooks/woocommerce/info also returned a broken absolute URL. Fixed by appending APP_URL=https://full-stack-app-108.preview.emergentagent.com to /app/backend/.env and restarting backend."},
+      {"endpoint": "PUT /api/users/{uid}", "issue": "Endpoint returns {success:true} even when a non-admin attempts to change their own role — the role field is silently stripped (correct behaviour), but there is no explicit 400/403 to signal rejection. Not a bug, just UX-invisible. Behaviour verified: operator PUT /users/{self} with role=admin returns 200 and role stays 'operator'."},
+      {"endpoint": "POST /api/stores", "issue": "When WooCommerce URL is unreachable (DNS fail), the store is still created (per spec: non-blocking). Warning message includes raw exception ('[Errno -2] Name or service not known') which is user-visible. Consider a friendlier message."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_v13_multi_store_users.py",
+    "/app/test_reports/pytest/pytest_v13.xml"
+  ],
+  "action_items": [
+    "IMPORTANT: APP_URL env var was missing. Testing agent added APP_URL=https://full-stack-app-108.preview.emergentagent.com to /app/backend/.env. Main agent should decide whether to persist this in the source or auto-detect base URL another way (e.g., from request headers) so the app is portable across deployments.",
+    "OPTIONAL: When store connection fails at creation, replace raw exception string with a user-friendly French message (e.g., 'URL introuvable — vérifiez le domaine')."
+  ],
+  "critical_code_review_comments": [
+    "server.py has now reached ~1600 lines and hosts routes for auth/products/orders/suppliers/pricing/catalog/woo/ai/webhooks/api-keys/outbound-webhooks/n8n/stores/users/scheduler. STRONGLY recommend splitting into /app/backend/routers/*.py by domain before adding more features — becoming hard to maintain.",
+    "n8n_info + webhook_info both depend on os.environ['APP_URL']. If unset, silent broken URLs are returned. Recommend either (a) fail-fast on startup if APP_URL missing, or (b) derive from Request.base_url with a fallback.",
+    "PUT /api/users/{uid} silently drops 'role' key for non-admin instead of returning 400. Preferred: return 403 when a non-admin attempts to send role in payload — makes contract explicit.",
+    "wc.test_connection surfaces exception.__str__ which may leak sensitive info. Map httpx errors to enum-style codes.",
+    "product_mappings queries use `mapping_query` dict that only contains internalProductId+storeId in the query; when storeId is None (legacy path), the same mapping is used across future non-legacy stores. Consider requiring storeId always (assign 'legacy' sentinel)."
+  ],
+  "updated_files": [
+    "/app/backend/.env (added APP_URL)",
+    "/app/backend/tests/test_v13_multi_store_users.py (created — 21 new tests)"
+  ],
+  "success_rate": {
+    "backend": "100% (21/21 v1.3 tests, plus previous 39/40 regression still passing)",
+    "frontend": "100% (all requested flows verified — sidebar, /boutiques create/list, /utilisateurs table+modal, operator guard)"
+  },
+  "test_credentials": "Admin: admin@marcherbien.fr / Admin1234! (from /app/memory/test_credentials.md). Operator: operator@marcherbien.fr / Op1234! (seeded during iter 3 tests).",
+  "seed_data_creation": "TEST_UI_Store created via UI and deleted post-test. TEST_Store_Dummy created and deleted by pytest. TEST_Op_User + test_bad_role attempts cleaned up. No residual test data.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "v1.3 fully green. /api/docs and /api/openapi.json work (docs_url set). Multi-store CRUD works and secret is never exposed. Multi-user CRUD works with proper admin/operator RBAC. IMPORTANT: /app/backend/.env now contains APP_URL — if it's ever wiped/reset, re-add. Regression file /app/backend/tests/test_v13_multi_store_users.py is idempotent (cleans up its own TEST_ data).",
+  "rca of the issue": "n8n_info swagger_docs was missing the domain prefix. Root cause: backend/.env had no APP_URL and code fetches os.environ.get('APP_URL', ''). Fix: added APP_URL to /app/backend/.env and restarted backend. Reproduction: unset APP_URL, restart backend, GET /api/integrations/n8n/info → swagger_docs='/api/docs' instead of full URL."
+}
