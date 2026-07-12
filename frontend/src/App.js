@@ -11,6 +11,7 @@ import PricingRules from "./pages/PricingRules";
 import Orders from "./pages/Orders";
 import WooCommerce from "./pages/WooCommerce";
 import Notifications from "./pages/Notifications";
+import Automations from "./pages/Automations";
 
 function PrivateRoute({ children }) {
   const { user, loading } = useAuth();
@@ -38,6 +39,7 @@ export default function App() {
           <Route path="/regles-prix" element={<PrivateRoute><PricingRules /></PrivateRoute>} />
           <Route path="/commandes" element={<PrivateRoute><Orders /></PrivateRoute>} />
           <Route path="/woocommerce" element={<PrivateRoute><WooCommerce /></PrivateRoute>} />
+          <Route path="/automatisations" element={<PrivateRoute><Automations /></PrivateRoute>} />
           <Route path="/notifications" element={<PrivateRoute><Notifications /></PrivateRoute>} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>

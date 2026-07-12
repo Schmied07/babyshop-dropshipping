@@ -204,6 +204,10 @@ class Order(BaseDocument):
     total: float = 0
     status: str = "pending"  # pending | processing | shipped | delivered | cancelled
     fulfillmentStatus: str = "unfulfilled"  # unfulfilled | in_progress | fulfilled
+    paymentStatus: str = "unpaid"  # unpaid | paid | refunded | partial_refund
+    paymentMethod: Optional[str] = None
+    paymentReference: Optional[str] = None
+    paidAt: Optional[datetime] = None
     trackingNumber: Optional[str] = None
     trackingCarrier: Optional[str] = None
     supplierOrderRef: Optional[str] = None

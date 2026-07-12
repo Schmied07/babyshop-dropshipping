@@ -20,6 +20,17 @@ export function StatusBadge({ status }) {
   return <span className={cn("badge", it.cls)}>{it.label}</span>;
 }
 
+export function PaymentBadge({ status }) {
+  const map = {
+    paid: { label: "Payé", cls: "badge-success" },
+    unpaid: { label: "En attente", cls: "badge-warning" },
+    refunded: { label: "Remboursé", cls: "badge-neutral" },
+    partial_refund: { label: "Partiel", cls: "badge-info" },
+  };
+  const it = map[status] || { label: "—", cls: "badge-neutral" };
+  return <span className={cn("badge", it.cls)}>{it.label}</span>;
+}
+
 export function StockBadge({ stock }) {
   if (stock === undefined || stock === null) return <span className="badge badge-neutral">—</span>;
   if (stock <= 0) return <span className="badge badge-critical">Rupture</span>;

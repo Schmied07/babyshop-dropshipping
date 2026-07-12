@@ -37,10 +37,10 @@ export default function Login() {
               <div className="w-9 h-9 bg-primary" />
               <div>
                 <div className="font-heading font-black text-lg leading-none tracking-tight">
-                  MARCHERBIEN
+                  EUROPADROP
                 </div>
                 <div className="text-[10px] tracking-[0.25em] text-muted-foreground mt-1 uppercase mono">
-                  Dropship OS · v1.0
+                  Dropship OS · v1.1
                 </div>
               </div>
             </div>

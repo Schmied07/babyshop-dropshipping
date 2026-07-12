@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import api from "../lib/api";
-import { PageHeader, Card, Loading, StatusBadge } from "../components/Bits";
+import { PageHeader, Card, Loading, StatusBadge, PaymentBadge } from "../components/Bits";
 import { fmtDate, fmtEUR, cn } from "../lib/format";
 import { ShoppingBag, Truck, Package, CheckSquare, Square, Lightning, ClockCounterClockwise, ArrowRight } from "@phosphor-icons/react";
 
@@ -121,6 +121,7 @@ export default function Orders() {
                   <th className="num">Articles</th>
                   <th className="num">Total</th>
                   <th>Statut</th>
+                  <th>Paiement</th>
                   <th>Fulfillment</th>
                   <th>Tracking</th>
                   <th>Date</th>
@@ -143,6 +144,10 @@ export default function Orders() {
                     <td className="num">{o.items?.length || 0}</td>
                     <td className="num font-bold">{fmtEUR(o.total)}</td>
                     <td><StatusBadge status={o.status} /></td>
+                    <td>
+                      <PaymentBadge status={o.paymentStatus || "unpaid"} />
+                      {o.paymentMethod && <div className="text-[10px] mono text-muted-foreground mt-0.5">{o.paymentMethod}</div>}
+                    </td>
                     <td><StatusBadge status={o.fulfillmentStatus} /></td>
                     <td className="mono text-[11px]">
                       {o.trackingNumber ? (
@@ -165,7 +170,7 @@ export default function Orders() {
                   </tr>
                 ))}
                 {orders.length === 0 && (
-                  <tr><td colSpan={10} className="text-center py-8 text-muted-foreground">Aucune commande.</td></tr>
+                  <tr><td colSpan={11} className="text-center py-8 text-muted-foreground">Aucune commande.</td></tr>
                 )}
               </tbody>
             </table>
@@ -181,11 +186,27 @@ export default function Orders() {
 function OrderDetail({ order, onClose, onChanged }) {
   const [tracking, setTracking] = useState(order.trackingNumber || "");
   const [carrier, setCarrier] = useState(order.trackingCarrier || "Colissimo");
+  const [paymentStatus, setPaymentStatus] = useState(order.paymentStatus || "unpaid");
+  const [paymentMethod, setPaymentMethod] = useState(order.paymentMethod || "");
+  const [paymentReference, setPaymentReference] = useState(order.paymentReference || "");
 
   const saveTracking = async () => {
     try {
       await api.post(`/orders/${order.id}/tracking`, { trackingNumber: tracking, trackingCarrier: carrier });
       toast.success("Tracking enregistré · commande expédiée");
+      onChanged();
+      onClose();
+    } catch (e) {
+      toast.error(e.response?.data?.detail || "Erreur");
+    }
+  };
+
+  const savePayment = async () => {
+    try {
+      await api.put(`/orders/${order.id}/payment`, {
+        paymentStatus, paymentMethod: paymentMethod || null, paymentReference: paymentReference || null,
+      });
+      toast.success("Paiement mis à jour");
       onChanged();
       onClose();
     } catch (e) {
@@ -202,8 +223,9 @@ function OrderDetail({ order, onClose, onChanged }) {
             <div className="h2 mono">{order.orderNumber}</div>
             <div className="text-xs text-muted-foreground mt-1">{order.customerName} · {order.customerEmail}</div>
           </div>
-          <div className="flex gap-2">
+          <div className="flex gap-2 items-center">
             <StatusBadge status={order.status} />
+            <PaymentBadge status={order.paymentStatus || "unpaid"} />
           </div>
         </div>
 
@@ -233,6 +255,36 @@ function OrderDetail({ order, onClose, onChanged }) {
             </div>
           </div>
 
+          {/* Payment */}
+          <div>
+            <div className="label">Paiement</div>
+            <div className="grid grid-cols-3 gap-2">
+              <select className="input" value={paymentStatus} onChange={(e) => setPaymentStatus(e.target.value)} data-testid="payment-status">
+                <option value="unpaid">En attente</option>
+                <option value="paid">Payé</option>
+                <option value="refunded">Remboursé</option>
+                <option value="partial_refund">Remboursement partiel</option>
+              </select>
+              <input
+                className="input"
+                placeholder="Méthode (CB, PayPal, SEPA…)"
+                value={paymentMethod}
+                onChange={(e) => setPaymentMethod(e.target.value)}
+                data-testid="payment-method"
+              />
+              <input
+                className="input input-mono"
+                placeholder="Référence transaction"
+                value={paymentReference}
+                onChange={(e) => setPaymentReference(e.target.value)}
+              />
+            </div>
+            <button className="btn btn-secondary mt-2" onClick={savePayment} data-testid="save-payment">
+              Enregistrer le paiement
+            </button>
+          </div>
+
+          {/* Shipping */}
           <div>
             <div className="label">Ajouter / mettre à jour le tracking</div>
             <div className="flex gap-2">

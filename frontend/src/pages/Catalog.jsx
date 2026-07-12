@@ -1,16 +1,24 @@
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import api from "../lib/api";
-import { fmtEUR, fmtDate, cn } from "../lib/format";
+import { fmtEUR, cn } from "../lib/format";
 import { PageHeader, Card, StockBadge, StatusBadge, Loading } from "../components/Bits";
-import { MagnifyingGlass, X, ArrowsClockwise, Package as PkgIcon, Lightning } from "@phosphor-icons/react";
+import { MagnifyingGlass, X, ArrowsClockwise, Package as PkgIcon, Lightning, Sparkle, Globe, CloudArrowUp } from "@phosphor-icons/react";
 
 const CATEGORIES = ["Tous", "Hygiène", "Soins", "Bain", "Repas", "Déplacement"];
 
+const TABS = [
+  { key: "all", label: "Tous", testid: "tab-all" },
+  { key: "imported", label: "Importés", testid: "tab-imported", desc: "Non publiés sur WooCommerce" },
+  { key: "published", label: "Publiés", testid: "tab-published", desc: "Actifs sur marcherbien.fr" },
+];
+
 export default function Catalog() {
   const [products, setProducts] = useState([]);
+  const [stats, setStats] = useState({ total: 0, published: 0, not_published: 0 });
   const [q, setQ] = useState("");
   const [cat, setCat] = useState("Tous");
+  const [tab, setTab] = useState("all");
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState(null);
 
@@ -19,13 +27,15 @@ export default function Catalog() {
     const params = { limit: 200 };
     if (q) params.q = q;
     if (cat !== "Tous") params.category = cat;
+    if (tab !== "all") params.sync_status = tab;
     api.get("/products", { params }).then((r) => {
       setProducts(r.data.data || []);
       setLoading(false);
     });
+    api.get("/products/stats").then((r) => setStats(r.data));
   };
 
-  useEffect(() => { load(); /* eslint-disable-next-line */ }, [cat]);
+  useEffect(() => { load(); /* eslint-disable-next-line */ }, [cat, tab]);
 
   const applyRules = async () => {
     toast.promise(api.post("/pricing-rules/apply-all").then(() => load()), {
@@ -39,7 +49,7 @@ export default function Catalog() {
     <div className="p-8 lg:p-12 fade-up">
       <PageHeader
         title="Catalogue"
-        subtitle={`${products.length} produits`}
+        subtitle={`${stats.total} produits · ${stats.published} publiés · ${stats.not_published} en attente`}
         action={
           <button className="btn btn-secondary" data-testid="apply-rules-btn" onClick={applyRules}>
             <Lightning size={14} weight="bold" /> Appliquer règles de prix
@@ -47,9 +57,32 @@ export default function Catalog() {
         }
       />
 
+      {/* Tabs like DSers */}
+      <div className="flex items-center gap-0 mb-4 border-b border-border">
+        {TABS.map((t) => {
+          const count = t.key === "all" ? stats.total : t.key === "published" ? stats.published : stats.not_published;
+          return (
+            <button
+              key={t.key}
+              onClick={() => setTab(t.key)}
+              className={cn(
+                "px-5 py-3 text-[13px] font-bold border-b-2 transition-colors",
+                tab === t.key ? "border-primary text-primary" : "border-transparent text-muted-foreground hover:text-foreground"
+              )}
+              data-testid={t.testid}
+            >
+              {t.label}
+              <span className={cn("ml-2 mono text-[11px] px-1.5 py-0.5", tab === t.key ? "bg-primary text-white" : "bg-muted")}>
+                {count}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+
       {/* Filters */}
-      <div className="flex items-center gap-2 mb-4">
-        <div className="relative flex-1 max-w-md">
+      <div className="flex items-center gap-2 mb-4 flex-wrap">
+        <div className="relative flex-1 max-w-md min-w-[240px]">
           <MagnifyingGlass size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" weight="bold" />
           <input
             className="input pl-9"
@@ -64,10 +97,7 @@ export default function Catalog() {
           <button
             key={c}
             onClick={() => setCat(c)}
-            className={cn(
-              "btn",
-              cat === c ? "btn-primary" : "btn-secondary"
-            )}
+            className={cn("btn", cat === c ? "btn-primary" : "btn-secondary")}
             data-testid={`cat-filter-${c}`}
           >
             {c}
@@ -89,6 +119,7 @@ export default function Catalog() {
                   <th className="num">Prix vente</th>
                   <th className="num">Marge</th>
                   <th className="num">Stock</th>
+                  <th>WooCommerce</th>
                   <th></th>
                 </tr>
               </thead>
@@ -117,6 +148,16 @@ export default function Catalog() {
                       <td className="num text-success">{fmtEUR(margin)} <span className="text-muted-foreground">({marginPct}%)</span></td>
                       <td className="num"><StockBadge stock={p.stock} /></td>
                       <td>
+                        {p.wooSynced ? (
+                          <div className="flex items-center gap-1">
+                            <span className="badge badge-success">Publié</span>
+                            {p.wpProductId && <span className="mono text-[10px] text-muted-foreground">#{p.wpProductId}</span>}
+                          </div>
+                        ) : (
+                          <span className="badge badge-neutral">Non publié</span>
+                        )}
+                      </td>
+                      <td>
                         <button
                           className="btn btn-secondary text-[11px] py-1.5 px-2.5"
                           onClick={() => setSelected(p)}
@@ -128,6 +169,9 @@ export default function Catalog() {
                     </tr>
                   );
                 })}
+                {products.length === 0 && (
+                  <tr><td colSpan={8} className="text-center py-8 text-muted-foreground">Aucun produit dans cette vue.</td></tr>
+                )}
               </tbody>
             </table>
           </div>
@@ -143,6 +187,7 @@ function ProductDrawer({ product, onClose, onChanged }) {
   const [detail, setDetail] = useState(null);
   const [best, setBest] = useState(null);
   const [strategy, setStrategy] = useState("cheapest");
+  const [aiLoading, setAiLoading] = useState(false);
 
   useEffect(() => {
     api.get(`/products/${product.id}`).then((r) => setDetail(r.data));
@@ -163,6 +208,42 @@ function ProductDrawer({ product, onClose, onChanged }) {
     });
   };
 
+  const generateSEO = async () => {
+    setAiLoading(true);
+    try {
+      const r = await api.post("/ai/seo-description", {
+        productId: product.id,
+        name: product.name,
+        category: product.category || "",
+        brand: product.brand || "",
+      });
+      toast.success("Description SEO générée par IA");
+      // refresh detail
+      const d = await api.get(`/products/${product.id}`);
+      setDetail(d.data);
+      onChanged();
+    } catch (e) {
+      toast.error("IA : " + (e.response?.data?.detail || "erreur"));
+    } finally {
+      setAiLoading(false);
+    }
+  };
+
+  const translateName = async () => {
+    setAiLoading(true);
+    try {
+      const r = await api.post("/ai/translate", { text: product.name, source_lang: "auto" });
+      await api.put(`/products/${product.id}`, { name: r.data.translated });
+      toast.success("Nom traduit en français");
+      onChanged();
+      onClose();
+    } catch (e) {
+      toast.error("IA : " + (e.response?.data?.detail || "erreur"));
+    } finally {
+      setAiLoading(false);
+    }
+  };
+
   return (
     <div className="fixed inset-0 z-50 flex justify-end" data-testid="product-drawer">
       <div className="absolute inset-0 bg-black/40" onClick={onClose} />
@@ -177,14 +258,30 @@ function ProductDrawer({ product, onClose, onChanged }) {
 
         <div className="p-6 space-y-6">
           <div className="grid grid-cols-3 gap-3">
-            <Metric label="Coût" value={fmtEUR(product.costPrice)} />
-            <Metric label="Vente" value={fmtEUR(product.retailPrice)} />
-            <Metric label="Stock" value={product.stock} />
+            <MetricBox label="Coût" value={fmtEUR(product.costPrice)} />
+            <MetricBox label="Vente" value={fmtEUR(product.retailPrice)} />
+            <MetricBox label="Stock" value={product.stock} />
           </div>
 
           {product.description && (
-            <div className="text-sm text-muted-foreground leading-relaxed">{product.description}</div>
+            <div className="text-sm text-muted-foreground leading-relaxed" dangerouslySetInnerHTML={{ __html: product.description.slice(0, 400) }} />
           )}
+
+          {/* IA Actions */}
+          <div className="border border-border p-4">
+            <div className="flex items-center gap-2 mb-3">
+              <Sparkle size={16} weight="fill" className="text-primary" />
+              <div className="h3">Assistant IA (DeepSeek)</div>
+            </div>
+            <div className="flex gap-2 flex-wrap">
+              <button className="btn btn-secondary text-[12px]" onClick={translateName} disabled={aiLoading} data-testid="ai-translate">
+                <Globe size={14} weight="bold" /> Traduire en FR
+              </button>
+              <button className="btn btn-secondary text-[12px]" onClick={generateSEO} disabled={aiLoading} data-testid="ai-seo">
+                <Sparkle size={14} weight="bold" /> Description SEO
+              </button>
+            </div>
+          </div>
 
           <div>
             <div className="flex items-center justify-between mb-3">
@@ -242,19 +339,19 @@ function ProductDrawer({ product, onClose, onChanged }) {
           </div>
 
           <div>
-            <div className="h3 mb-3">WooCommerce</div>
+            <div className="h3 mb-3 flex items-center gap-2"><CloudArrowUp size={18} weight="duotone" /> WooCommerce</div>
             {detail?.wooMapping ? (
               <div className="border border-border p-4 space-y-1 text-sm">
                 <div>ID WP : <span className="mono">{detail.wooMapping.wpProductId}</span></div>
                 <div>Statut : <StatusBadge status={detail.wooMapping.lastSyncStatus} /></div>
-                <div>Dernière sync : {fmtDate(detail.wooMapping.syncedAt)}</div>
+                <div>Dernière sync : {detail.wooMapping.syncedAt ? new Date(detail.wooMapping.syncedAt).toLocaleString("fr-FR") : "—"}</div>
                 {detail.wooMapping.lastSyncError && <div className="text-critical text-xs">{detail.wooMapping.lastSyncError}</div>}
               </div>
             ) : (
-              <div className="text-sm text-muted-foreground">Non synchronisé.</div>
+              <div className="text-sm text-muted-foreground">Non publié sur la boutique.</div>
             )}
             <button className="btn btn-primary mt-3" onClick={syncWoo} data-testid="sync-woo-btn">
-              <ArrowsClockwise size={14} weight="bold" /> Synchroniser sur WooCommerce
+              <ArrowsClockwise size={14} weight="bold" /> {detail?.wooMapping ? "Resynchroniser" : "Publier sur boutique"}
             </button>
           </div>
         </div>
@@ -263,11 +360,11 @@ function ProductDrawer({ product, onClose, onChanged }) {
   );
 }
 
-function Metric({ label, value }) {
+function MetricBox({ label, value }) {
   return (
     <div className="metric" style={{ padding: 14 }}>
       <div className="metric-label">{label}</div>
-      <div className="mono font-bold text-xl mt-1">{typeof value === "string" ? value : value}</div>
+      <div className="mono font-bold text-xl mt-1">{value}</div>
     </div>
   );
 }

@@ -2,7 +2,7 @@ import { NavLink, useNavigate, Link } from "react-router-dom";
 import { useEffect, useState } from "react";
 import {
   ChartLineUp, Package, Storefront, ShoppingBag, Percent, ArrowsClockwise,
-  BellRinging, SignOut, MagnifyingGlass, PlugsConnected, DownloadSimple,
+  BellRinging, SignOut, MagnifyingGlass, PlugsConnected, DownloadSimple, Robot,
 } from "@phosphor-icons/react";
 import { useAuth } from "../lib/auth";
 import api from "../lib/api";
@@ -16,6 +16,7 @@ const links = [
   { to: "/import", label: "Import catalogue", icon: DownloadSimple, testid: "nav-import" },
   { to: "/regles-prix", label: "Règles de prix", icon: Percent, testid: "nav-pricing" },
   { to: "/woocommerce", label: "WooCommerce", icon: ArrowsClockwise, testid: "nav-woocommerce" },
+  { to: "/automatisations", label: "Automatisations", icon: Robot, testid: "nav-automations" },
 ];
 
 export default function Layout({ children }) {
@@ -49,10 +50,10 @@ export default function Layout({ children }) {
             </div>
             <div>
               <div className="font-heading font-black text-[15px] leading-none tracking-tight">
-                MARCHERBIEN
+                EUROPADROP
               </div>
               <div className="text-[10px] tracking-[0.2em] text-zinc-400 mt-1 uppercase">
-                Dropship OS
+                Dropship OS · UE
               </div>
             </div>
           </Link>

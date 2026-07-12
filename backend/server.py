@@ -1,10 +1,13 @@
 """MarcherBien Dropship - FastAPI backend."""
 import os
+import hmac
+import hashlib
+import base64
 from datetime import datetime, timedelta, timezone
 from typing import List, Optional
 from bson import ObjectId
 from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException, Depends, Query, UploadFile, File, Form, BackgroundTasks
+from fastapi import FastAPI, HTTPException, Depends, Query, UploadFile, File, Form, BackgroundTasks, Request, Header
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from motor.motor_asyncio import AsyncIOMotorClient
@@ -23,6 +26,8 @@ from auth import (  # noqa: E402
 from pricing import compute_retail_price, find_best_rule, auto_select_supplier  # noqa: E402
 from catalog_import import parse_catalog, detect_columns, auto_suggest_mapping, coerce_row  # noqa: E402
 import woocommerce as wc  # noqa: E402
+import deepseek  # noqa: E402
+from scheduler import start_scheduler, sync_stocks_and_prices, import_woo_orders  # noqa: E402
 
 MONGO_URL = os.environ.get("MONGO_URL")
 DB_NAME = os.environ.get("DB_NAME")
@@ -30,7 +35,7 @@ DB_NAME = os.environ.get("DB_NAME")
 client = AsyncIOMotorClient(MONGO_URL)
 db = client[DB_NAME]
 
-app = FastAPI(title="MarcherBien Dropship API", version="1.0.0")
+app = FastAPI(title="EuropaDrop API", version="1.1.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -116,6 +121,7 @@ async def health():
         "status": "ok",
         "mongodb": mongo,
         "woocommerce": "configured" if wc.is_configured() else "not_configured",
+        "deepseek": "configured" if deepseek.is_configured() else "not_configured",
         "timestamp": utc_now().isoformat(),
     }
 
@@ -205,20 +211,65 @@ async def delete_supplier(sid: str, _=Depends(get_current_user)):
 @app.get("/api/products")
 async def list_products(
     page: int = 1, limit: int = 50, q: Optional[str] = None,
-    category: Optional[str] = None, _=Depends(get_current_user),
+    category: Optional[str] = None,
+    sync_status: Optional[str] = None,  # 'imported' | 'published' | 'not_published'
+    _=Depends(get_current_user),
 ):
     filt: dict = {}
     if q:
         filt["$or"] = [{"name": {"$regex": q, "$options": "i"}}, {"sku": {"$regex": q, "$options": "i"}}]
     if category:
         filt["category"] = category
+
+    # sync_status filter uses join with product_mappings
+    if sync_status:
+        synced_ids = set()
+        async for m in db.product_mappings.find({"lastSyncStatus": {"$in": ["success", "mocked"]}}):
+            synced_ids.add(m["internalProductId"])
+        if sync_status == "published":
+            filt["_id"] = {"$in": [oid(i) for i in synced_ids]}
+        elif sync_status in ("imported", "not_published"):
+            filt["_id"] = {"$nin": [oid(i) for i in synced_ids]}
+
     total = await db.products.count_documents(filt)
     skip = (page - 1) * limit
     docs = await db.products.find(filt).skip(skip).limit(limit).sort("createdAt", -1).to_list(None)
+
+    # Enrich each with sync status
+    all_mappings = {}
+    async for m in db.product_mappings.find({}):
+        all_mappings[m["internalProductId"]] = m
+
+    result = []
+    for d in docs:
+        j = doc_to_json(d)
+        mp = all_mappings.get(str(d["_id"]))
+        j["wooSynced"] = bool(mp and mp.get("lastSyncStatus") in ("success", "mocked"))
+        j["wpProductId"] = mp.get("wpProductId") if mp else None
+        j["lastSyncStatus"] = mp.get("lastSyncStatus") if mp else None
+        j["syncedAt"] = mp.get("syncedAt").isoformat() if mp and mp.get("syncedAt") else None
+        result.append(j)
+
     return {
         "success": True,
         "pagination": {"total": total, "page": page, "pages": max(1, (total + limit - 1) // limit)},
-        "data": [doc_to_json(d) for d in docs],
+        "data": result,
+    }
+
+
+@app.get("/api/products/stats")
+async def products_stats(_=Depends(get_current_user)):
+    total = await db.products.count_documents({})
+    active = await db.products.count_documents({"isActive": True})
+    synced_ids = set()
+    async for m in db.product_mappings.find({"lastSyncStatus": {"$in": ["success", "mocked"]}}):
+        synced_ids.add(m["internalProductId"])
+    published = len(synced_ids)
+    return {
+        "total": total,
+        "active": active,
+        "published": published,
+        "not_published": total - published,
     }
 
 
@@ -633,6 +684,10 @@ async def woo_status(_=Depends(get_current_user)):
 
 @app.post("/api/woocommerce/sync-product/{pid}")
 async def woo_sync_product(pid: str, _=Depends(get_current_user)):
+    return await woo_sync_product_internal(pid)
+
+
+async def woo_sync_product_internal(pid: str):
     prod = await db.products.find_one({"_id": oid(pid)})
     if not prod:
         raise HTTPException(404, "Produit non trouvé")
@@ -695,7 +750,7 @@ async def woo_sync_all(_=Depends(get_current_user)):
     prods = await db.products.find({"isActive": True}).to_list(None)
     results = {"total": len(prods), "success": 0, "errors": 0}
     for p in prods:
-        r = await woo_sync_product(str(p["_id"]), current={"id": "system", "email": "system", "role": "admin"})  # noqa
+        r = await woo_sync_product_internal(str(p["_id"]))
         if r.get("success"):
             results["success"] += 1
         else:
@@ -823,6 +878,229 @@ async def supplier_performance(_=Depends(get_current_user)):
     return {"success": True, "data": result}
 
 
+# ========== PAYMENT STATUS ==========
+class PaymentUpdate(BaseModel):
+    paymentStatus: str  # unpaid | paid | refunded | partial_refund
+    paymentMethod: Optional[str] = None
+    paymentReference: Optional[str] = None
+
+
+@app.put("/api/orders/{oid_}/payment")
+async def update_payment(oid_: str, payload: PaymentUpdate, _=Depends(get_current_user)):
+    update = payload.model_dump(exclude_none=True)
+    update["updatedAt"] = utc_now()
+    if payload.paymentStatus == "paid":
+        update["paidAt"] = utc_now()
+    await db.orders.update_one({"_id": oid(oid_)}, {"$set": update})
+    return {"success": True}
+
+
+# ========== DEEPSEEK AI ==========
+class TranslatePayload(BaseModel):
+    text: str
+    source_lang: str = "auto"
+
+
+@app.post("/api/ai/translate")
+async def ai_translate(payload: TranslatePayload, _=Depends(get_current_user)):
+    if not deepseek.is_configured():
+        raise HTTPException(400, "DeepSeek non configuré")
+    try:
+        translated = await deepseek.translate_to_french(payload.text, payload.source_lang)
+        return {"success": True, "translated": translated}
+    except Exception as e:
+        raise HTTPException(500, str(e))
+
+
+class SEOPayload(BaseModel):
+    productId: Optional[str] = None
+    name: str
+    category: str = ""
+    brand: str = ""
+    features: str = ""
+
+
+@app.post("/api/ai/seo-description")
+async def ai_seo(payload: SEOPayload, _=Depends(get_current_user)):
+    if not deepseek.is_configured():
+        raise HTTPException(400, "DeepSeek non configuré")
+    try:
+        result = await deepseek.generate_seo_description(
+            payload.name, payload.category, payload.brand, payload.features
+        )
+        if payload.productId:
+            await db.products.update_one(
+                {"_id": oid(payload.productId)},
+                {"$set": {
+                    "seoTitle": result.get("seo_title"),
+                    "metaDescription": result.get("meta_description"),
+                    "description": result.get("description"),
+                    "keywords": result.get("keywords", []),
+                }},
+            )
+        return {"success": True, **result}
+    except Exception as e:
+        raise HTTPException(500, str(e))
+
+
+class SmartMapPayload(BaseModel):
+    columns: List[str]
+    sample_rows: List[dict] = []
+
+
+@app.post("/api/ai/smart-mapping")
+async def ai_smart_mapping(payload: SmartMapPayload, _=Depends(get_current_user)):
+    if not deepseek.is_configured():
+        raise HTTPException(400, "DeepSeek non configuré")
+    try:
+        mapping = await deepseek.smart_column_mapping(payload.columns, payload.sample_rows)
+        return {"success": True, "mapping": mapping}
+    except Exception as e:
+        raise HTTPException(500, str(e))
+
+
+class BulkTranslatePayload(BaseModel):
+    productIds: List[str]
+
+
+@app.post("/api/ai/bulk-translate-products")
+async def ai_bulk_translate(payload: BulkTranslatePayload, _=Depends(get_current_user)):
+    if not deepseek.is_configured():
+        raise HTTPException(400, "DeepSeek non configuré")
+    updated = 0
+    errors = []
+    for pid in payload.productIds:
+        try:
+            prod = await db.products.find_one({"_id": oid(pid)})
+            if not prod:
+                continue
+            new_name = await deepseek.translate_to_french(prod.get("name", ""))
+            new_desc = await deepseek.translate_to_french(prod.get("description", "")) if prod.get("description") else ""
+            await db.products.update_one(
+                {"_id": oid(pid)},
+                {"$set": {"name": new_name, "description": new_desc}},
+            )
+            updated += 1
+        except Exception as e:
+            errors.append(f"{pid}: {e}")
+    return {"success": True, "updated": updated, "errors": errors[:5]}
+
+
+# ========== WOOCOMMERCE WEBHOOKS ==========
+def _verify_wc_signature(body: bytes, signature: Optional[str]) -> bool:
+    """Verify WooCommerce webhook HMAC-SHA256 signature."""
+    secret = os.environ.get("WP_WEBHOOK_SECRET", "")
+    if not secret or not signature:
+        return True  # Allow if secret not set (dev/test)
+    expected = base64.b64encode(hmac.new(secret.encode(), body, hashlib.sha256).digest()).decode()
+    return hmac.compare_digest(expected, signature)
+
+
+@app.post("/api/webhooks/woocommerce/orders")
+async def wc_webhook_orders(request: Request, x_wc_webhook_signature: Optional[str] = Header(None)):
+    """Receive order.created/updated webhook from WooCommerce."""
+    body = await request.body()
+    if not _verify_wc_signature(body, x_wc_webhook_signature):
+        raise HTTPException(401, "Invalid signature")
+    try:
+        wp_order = await request.json()
+    except Exception:
+        raise HTTPException(400, "Invalid JSON")
+
+    wp_id = wp_order.get("id")
+    if not wp_id:
+        return {"received": True, "ignored": True}
+
+    from scheduler import _map_wc_status
+    billing = wp_order.get("billing", {})
+    items = [{
+        "productId": "", "sku": li.get("sku", ""), "name": li.get("name", ""),
+        "quantity": li.get("quantity", 1), "price": float(li.get("price", 0) or 0),
+        "supplierCost": 0,
+    } for li in wp_order.get("line_items", [])]
+
+    doc = {
+        "orderNumber": f"WP-{wp_id}",
+        "wpOrderId": wp_id,
+        "customerName": f"{billing.get('first_name', '')} {billing.get('last_name', '')}".strip() or "Client WP",
+        "customerEmail": billing.get("email", ""),
+        "shippingAddress": wp_order.get("shipping", {}),
+        "items": items,
+        "total": float(wp_order.get("total", 0) or 0),
+        "status": _map_wc_status(wp_order.get("status", "pending")),
+        "paymentStatus": "paid" if wp_order.get("date_paid") else "unpaid",
+        "paymentMethod": wp_order.get("payment_method_title", ""),
+        "updatedAt": utc_now(),
+    }
+    result = await db.orders.update_one(
+        {"wpOrderId": wp_id},
+        {"$set": doc, "$setOnInsert": {"createdAt": utc_now(), "fulfillmentStatus": "unfulfilled"}},
+        upsert=True,
+    )
+    if result.upserted_id:
+        await db.notifications.insert_one({
+            "type": "order_new", "severity": "info",
+            "title": "Nouvelle commande WooCommerce",
+            "message": f"Commande WP-{wp_id} de {doc['customerName']} · {doc['total']}€",
+            "link": "/commandes", "read": False, "createdAt": utc_now(),
+        })
+    return {"received": True, "created": bool(result.upserted_id), "updated": not result.upserted_id}
+
+
+@app.get("/api/webhooks/woocommerce/info")
+async def wc_webhook_info(_=Depends(get_current_user)):
+    """Returns webhook URL + secret to configure in WooCommerce admin."""
+    base = os.environ.get("APP_URL", "").rstrip("/")
+    return {
+        "url": f"{base}/api/webhooks/woocommerce/orders",
+        "secret": os.environ.get("WP_WEBHOOK_SECRET", ""),
+        "events": ["order.created", "order.updated"],
+        "instructions": (
+            "Dans WordPress Admin : WooCommerce → Réglages → Avancé → Webhooks → Ajouter. "
+            "Utiliser l'URL et le secret ci-dessus. Sujet : Commande créée + Commande mise à jour. "
+            "Version API : WP REST API Integration v3."
+        ),
+    }
+
+
+# ========== CRON SCHEDULER CONTROL ==========
+@app.get("/api/scheduler/status")
+async def scheduler_status(_=Depends(get_current_user)):
+    from scheduler import get_scheduler
+    s = get_scheduler()
+    if not s:
+        return {"running": False}
+    jobs = []
+    for j in s.get_jobs():
+        jobs.append({
+            "id": j.id,
+            "next_run": j.next_run_time.isoformat() if j.next_run_time else None,
+            "trigger": str(j.trigger),
+        })
+    return {
+        "running": True,
+        "cron_hours": int(os.environ.get("SYNC_CRON_HOURS", "6")),
+        "jobs": jobs,
+    }
+
+
+@app.post("/api/scheduler/run-now/{job_id}")
+async def scheduler_run_now(job_id: str, _=Depends(get_current_user)):
+    if job_id == "stocks_prices_sync":
+        await sync_stocks_and_prices(db)
+        return {"success": True, "job": "stocks_prices_sync"}
+    if job_id == "wc_orders_import":
+        await import_woo_orders(db)
+        return {"success": True, "job": "wc_orders_import"}
+    raise HTTPException(404, "Job inconnu")
+
+
+@app.get("/api/scheduler/history")
+async def scheduler_history(_=Depends(get_current_user)):
+    docs = await db.sync_jobs.find().sort("createdAt", -1).limit(20).to_list(None)
+    return {"success": True, "data": [doc_to_json(d) for d in docs]}
+
+
 # ========== STARTUP ==========
 @app.on_event("startup")
 async def startup():
@@ -830,4 +1108,6 @@ async def startup():
     await db.products.create_index("sku", unique=True, sparse=True)
     await db.supplier_products.create_index([("supplierId", 1), ("productId", 1)])
     await db.orders.create_index("orderNumber")
-    print("✓ MarcherBien Dropship API démarrée")
+    await db.orders.create_index("wpOrderId", sparse=True)
+    start_scheduler(db)
+    print("✓ EuropaDrop API démarrée")
