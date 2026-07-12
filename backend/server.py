@@ -1215,10 +1215,23 @@ async def wc_webhook_orders(request: Request, x_wc_webhook_signature: Optional[s
     return {"received": True, "created": bool(result.upserted_id), "updated": not result.upserted_id}
 
 
-@app.get("/api/webhooks/woocommerce/info")
-async def wc_webhook_info(_=Depends(get_current_user)):
-    """Returns webhook URL + secret to configure in WooCommerce admin."""
+def _get_base_url(request: Optional[Request] = None) -> str:
+    """Get base URL: prefer env APP_URL, fallback to request headers."""
     base = os.environ.get("APP_URL", "").rstrip("/")
+    if base:
+        return base
+    if request:
+        scheme = request.headers.get("x-forwarded-proto", "https")
+        host = request.headers.get("x-forwarded-host") or request.headers.get("host", "")
+        if host:
+            return f"{scheme}://{host}"
+    return ""
+
+
+@app.get("/api/webhooks/woocommerce/info")
+async def wc_webhook_info(request: Request, _=Depends(get_current_user)):
+    """Returns webhook URL + secret to configure in WooCommerce admin."""
+    base = _get_base_url(request)
     secret = await _get_webhook_secret()
     return {
         "url": f"{base}/api/webhooks/woocommerce/orders",
@@ -1233,7 +1246,7 @@ async def wc_webhook_info(_=Depends(get_current_user)):
 
 
 @app.post("/api/webhooks/woocommerce/regenerate-secret")
-async def wc_regenerate_secret(_=Depends(get_current_user)):
+async def wc_regenerate_secret(request: Request, _=Depends(get_current_user)):
     """Generate a new webhook secret, store it, return it."""
     new_secret = generate_secret()
     await db.app_settings.update_one(
@@ -1241,7 +1254,7 @@ async def wc_regenerate_secret(_=Depends(get_current_user)):
         {"$set": {"key": "webhook_secret", "value": new_secret, "updatedAt": utc_now()}},
         upsert=True,
     )
-    base = os.environ.get("APP_URL", "").rstrip("/")
+    base = _get_base_url(request)
     return {
         "success": True,
         "secret": new_secret,
@@ -1391,9 +1404,9 @@ async def test_outbound(wid: str, _=Depends(get_current_user)):
 
 # ========== n8n / OpenAPI integration helper ==========
 @app.get("/api/integrations/n8n/info")
-async def n8n_info(_=Depends(get_current_user)):
+async def n8n_info(request: Request, _=Depends(get_current_user)):
     """Instructions + endpoints to connect n8n."""
-    base = os.environ.get("APP_URL", "").rstrip("/")
+    base = _get_base_url(request)
     return {
         "swagger_docs": f"{base}/api/docs",
         "openapi_spec": f"{base}/api/openapi.json",
