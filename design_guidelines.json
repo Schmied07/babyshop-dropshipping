@@ -1,0 +1,154 @@
+{
+  "app_name": "MarcherBien Dropship",
+  "theme": "light",
+  "design_archetype": "SWISS & HIGH-CONTRAST (European Enterprise)",
+  "language": "fr",
+  "typography": {
+    "fonts": {
+      "headings": "Cabinet Grotesk",
+      "body": "Satoshi",
+      "mono": "IBM Plex Mono",
+      "install_instructions": "Use fontsource or google fonts for IBM Plex Mono. For Cabinet Grotesk and Satoshi, use Fontshare API via standard link tag in index.html: <link href=\"https://api.fontshare.com/v2/css?f[]=cabinet-grotesk@800,500,700,400&f[]=satoshi@900,700,500,400&display=swap\" rel=\"stylesheet\">"
+    },
+    "hierarchy": {
+      "h1": "text-4xl sm:text-5xl font-black tracking-tighter text-slate-900",
+      "h2": "text-2xl sm:text-3xl font-bold tracking-tight text-slate-800",
+      "h3": "text-xl font-semibold tracking-tight text-slate-800",
+      "h4": "text-base font-bold uppercase tracking-[0.15em] text-slate-500",
+      "body": "text-sm text-slate-600 leading-relaxed font-medium",
+      "data": "text-sm font-mono text-slate-800 tracking-tight",
+      "labels": "text-xs font-bold uppercase tracking-wider text-slate-500"
+    },
+    "rules": [
+      "Headings strictly use Cabinet Grotesk with tight letter spacing.",
+      "Body text uses Satoshi.",
+      "SKUs, prices, margins, and numeric data must use IBM Plex Mono with right-alignment.",
+      "No generic 'Inter' font for headings."
+    ]
+  },
+  "colors": {
+    "backgrounds": {
+      "app": "#F4F4F5",
+      "panel": "#FFFFFF",
+      "sidebar": "#09090B",
+      "table_header": "#FAFAFA"
+    },
+    "text": {
+      "primary": "#09090B",
+      "secondary": "#52525B",
+      "muted": "#A1A1AA",
+      "inverse": "#FFFFFF"
+    },
+    "brand": {
+      "primary": "#002FA7",
+      "primary_hover": "#002280",
+      "accent": "#FF2A2A"
+    },
+    "status": {
+      "success": "#00A86B",
+      "warning": "#FFC800",
+      "critical": "#FF2A2A",
+      "info": "#002FA7"
+    },
+    "rules": [
+      "Strict Swiss color logic: Color is function. 95% of the dashboard should be monochrome (black, white, greys).",
+      "Reserve International Klein Blue (#002FA7) strictly for primary actions and active navigation states.",
+      "Traffic-Light status: Use Emerald Green for 'En stock', Signal Red for 'Rupture' (Out of stock)."
+    ]
+  },
+  "layouts": {
+    "strategy": "High Density Grid (Bento) & Grid Borders",
+    "dashboard_grid": "grid grid-cols-1 md:grid-cols-4 lg:grid-cols-12 gap-4 or gap-6",
+    "spacing": {
+      "container": "p-6 lg:p-12",
+      "card_internal": "p-6"
+    },
+    "navigation": {
+      "type": "Left Sidebar (Dark Mode #09090B) + Top App Bar (Light Mode #FFFFFF)",
+      "top_bar": "Sticky top bar with Command Palette (Cmd+K) search, stock alerts bell, and JWT profile.",
+      "sidebar_links": [
+        "Tableau de bord (Dashboard)",
+        "Commandes (Orders)",
+        "Catalogue (Products)",
+        "Fournisseurs (Suppliers)",
+        "Règles de Prix (Pricing Rules)",
+        "WooCommerce Sync"
+      ]
+    },
+    "panels": {
+      "style": "Sharp edges (rounded-none or rounded-sm max 4px). 1px solid border (border-slate-200). NO drop shadows. Flat, geometric, technical aesthetic."
+    }
+  },
+  "components_and_visuals": {
+    "ui_library": "shadcn/ui",
+    "icons": {
+      "library": "@phosphor-icons/react",
+      "style": "weight=\"duotone\" for sidebar, weight=\"regular\" for dense tables.",
+      "install": "yarn add @phosphor-icons/react"
+    },
+    "tables": {
+      "style": "Grid Borders style. border-collapse. border-b border-r border-slate-200 on cells. Sticky headers for catalog.",
+      "data_alignment": "Right-align all numbers (Prices, Margins, Stock levels) to stack decimal points."
+    },
+    "wizards": {
+      "usage": "Supplier catalog import (CSV/JSON/XML). Use step-by-step progressive disclosure. Don't overwhelm users.",
+      "mapping_ui": "Use two-column mapping interface with visual connecting lines or clear select dropdowns for column matching."
+    },
+    "command_palette": {
+      "usage": "Implement a global Cmd+K search (using cmdk) for quick access to products, orders, or suppliers."
+    },
+    "overrides": [
+      "Remove all generic soft drop shadows from Shadcn cards. Replace with 1px border-slate-200.",
+      "Buttons: Sharp edges (rounded-sm), high contrast."
+    ]
+  },
+  "motion": {
+    "rules": [
+      "Calm Design: Minimal animations. Instant feedback for B2B efficiency.",
+      "Hover states: Background changes to slate-50, text remains high contrast.",
+      "Use sonner for French toast notifications (e.g., 'Synchronisation réussie', 'Rupture de stock détectée')."
+    ]
+  },
+  "media": {
+    "image_urls": {
+      "warehouse_hero": {
+        "url": "https://images.pexels.com/photos/4487383/pexels-photo-4487383.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
+        "description": "European warehouse overview, to be used in 'Fournisseurs' (Suppliers) onboarding or empty states."
+      },
+      "product_decor_1": {
+        "url": "https://images.unsplash.com/photo-1739973790298-fceedd19cf05?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NTY2NjZ8MHwxfHNlYXJjaHw0fHxtaW5pbWFsaXN0JTIwcHJvZHVjdCUyMHBob3RvZ3JhcGh5JTIwaG9tZSUyMGRlY29yfGVufDB8fHx8MTc4MjMzMDQ1Mnww&ixlib=rb-4.1.0&q=85",
+        "description": "High-end hand lotion, minimalist. Use as a catalog product mockup."
+      },
+      "product_decor_2": {
+        "url": "https://images.unsplash.com/photo-1627808587525-194446b07384?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NTY2NjZ8MHwxfHNlYXJjaHwzfHxtaW5pbWFsaXN0JTIwcHJvZHVjdCUyMHBob3RvZ3JhcGh5JTIwaG9tZSUyMGRlY29yfGVufDB8fHx8MTc4MjMzMDQ1Mnww&ixlib=rb-4.1.0&q=85",
+        "description": "Candle jar, minimalist. Use as a catalog product mockup."
+      },
+      "product_decor_3": {
+        "url": "https://images.unsplash.com/photo-1612196808214-b8e1d6145a8c?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NTY2NjZ8MHwxfHNlYXJjaHwyfHxtaW5pbWFsaXN0JTIwcHJvZHVjdCUyMHBob3RvZ3JhcGh5JTIwaG9tZSUyMGRlY29yfGVufDB8fHx8MTc4MjMzMDQ1Mnww&ixlib=rb-4.1.0&q=85",
+        "description": "White ceramic vase. Use as a catalog product mockup."
+      }
+    }
+  },
+  "instructions_to_main_agent": [
+    "This is a French application. All UI text MUST be in French.",
+    "Do NOT use typical SaaS aesthetic (soft shadows, highly rounded corners). Emulate high-end European enterprise software (Swiss grid, technical borders, mono fonts for data).",
+    "For the 'Tableau de bord' (Dashboard), prioritize F-pattern scannability. Top row: 4 key metrics (Chiffre d'affaires, Commandes en attente, Alertes de stock, Marge moyenne). Left column: Top products. Right column: Recent activity.",
+    "For 'Catalogue', use a dense data table. Include columns for: Produit, Fournisseur (multi-select mapping badge), Coût, Prix de vente (calculated via rules), Stock, Actions.",
+    "Use Recharts for the Analytics section. Keep charts monochrome or dual-tone (Primary Blue and Accent Red).",
+    "Include 'data-testid' on all interactive elements (e.g., data-testid='import-csv-button', data-testid='sync-woo-button')."
+  ],
+  "UNIVERSAL GUIDELINES FOR MAIN AGENT": [
+    "You tend to converge toward generic, 'on distribution' outputs. In frontend design, this creates what users call the 'AI slop' aesthetic. Avoid this: make creative, distinctive frontends that surprise and delight.",
+    "Dark colors look good when used independently without gradients. DO NOT use dark colors as gradients.",
+    "Don't make generic centered layouts, simplistic gradients, and uniform styling.",
+    "Create depth through layered design elements with z-index hierarchy, or in this specific case, precise 1px borders and grid alignments.",
+    "You MUST NOT apply universal transition. Eg: transition: all. This results in breaking transforms. Always add transitions for specific interactive elements.",
+    "You MUST NOT center align the app container, ie do not add .App { text-align: center; } in the css file. This disrupts the human natural reading flow of text.",
+    "Always use modern button styles like pill-shaped, or sharp button with interaction animations & color relevant to the app style. (For this app: sharp buttons).",
+    "NEVER: use AI assistant Emoji characters like \ud83e\udd16\ud83e\udde0\ud83d\udcad\ud83d\udca1\ud83d\udd2e\ud83c\udfaf etc for icons. Use Phosphor Icons.",
+    "Every interaction needs micro-animations - hover states, transitions, entrance animations. Static = dead.",
+    "Use 2-3x more spacing than feels comfortable. Cramped designs look cheap.",
+    "Prioritize using pre-existing components from src/components/ui when applicable.",
+    "Use `sonner` for toasts. Sonner component are located in /app/src/components/ui/sonner.tsx"
+  ]
+}
