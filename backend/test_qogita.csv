@@ -1,0 +1,6 @@
+Qogita Catalog
+For Illustrative Purposes Only
+GTIN,Name,Category,Brand,EUR Lowest Price inc. shipping,Unit,Lowest Priced Offer Inventory,Is a pre-order?,Estimated Delivery Time (weeks),Number of Offers,Total Inventory of All Offers,Product Link
+1234567890123,Baby Toy Set,Toys & Games,BrandX,12.50,1,5,No,2,3,15,https://example.com/product1
+9876543210987,Organic Baby Food,Food & Nutrition,BrandY,8.99,6,10,No,1,5,50,https://example.com/product2
+5555555555555,Stroller Deluxe,Strollers,BrandZ,249.00,1,2,Yes,4,2,8,https://example.com/product3

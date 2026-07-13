@@ -47,25 +47,60 @@ def _find_header_row(raw: pd.DataFrame, max_scan: int = 25) -> int:
     Strategy: score each of the first N rows by
       + number of distinct header-shaped cells
       + bonus if the following row has similar or greater non-null density
+      + bonus for header-typical keywords (sku, price, name, stock, gtin, category, etc.)
+      + penalty for preamble/disclaimer rows (single long text cell, sentence-like content)
     """
+    # Common header keywords across suppliers (EN/FR/ES/IT)
+    header_keywords = {
+        "sku", "ref", "reference", "gtin", "ean", "upc", "barcode",
+        "name", "nom", "title", "product", "produit", "designation",
+        "price", "prix", "cost", "tarif", "wholesale",
+        "stock", "inventory", "quantity", "quantite", "dispo",
+        "category", "categorie", "brand", "marque", "manufacturer",
+        "moq", "minimum", "package", "unit", "delivery", "delai",
+    }
+    
     n = min(max_scan, len(raw))
     best_idx, best_score = 0, -1
+    
     for i in range(n):
         row = raw.iloc[i].tolist()
         header_cells = [str(v).strip() for v in row if _looks_like_header_cell(v)]
+        
         if len(header_cells) < 2:
             continue
+            
         distinct = len(set(header_cells))
-        # bonus for follow-up data density
+        score = distinct * 2
+        
+        # Penalty: if any single cell is very long (>60 chars), likely a title/disclaimer row
+        for cell in row:
+            if pd.notna(cell) and len(str(cell).strip()) > 60:
+                score -= 10
+        
+        # Bonus: presence of typical header keywords
+        row_text = " ".join(str(c).lower() for c in header_cells)
+        keyword_matches = sum(1 for kw in header_keywords if kw in row_text)
+        score += keyword_matches * 3
+        
+        # Bonus: following rows contain data (not more text/disclaimers)
         next_bonus = 0
         for j in range(i + 1, min(i + 4, len(raw))):
-            next_vals = [v for v in raw.iloc[j].tolist() if pd.notna(v) and str(v).strip()]
+            next_row = raw.iloc[j].tolist()
+            next_vals = [v for v in next_row if pd.notna(v) and str(v).strip()]
             if len(next_vals) >= max(2, distinct // 2):
-                next_bonus += 3
-        score = distinct * 2 + next_bonus
+                # Extra bonus if next row has numbers/short codes (not long sentences)
+                short_vals = [v for v in next_vals if len(str(v).strip()) < 50]
+                if len(short_vals) >= len(next_vals) * 0.7:
+                    next_bonus += 4
+                else:
+                    next_bonus += 1
+        score += next_bonus
+        
         if score > best_score:
             best_score = score
             best_idx = i
+            
     return best_idx if best_score > 0 else 0
 
 
@@ -74,12 +109,24 @@ def _dataframe_from_bytes(content: bytes, kind: str) -> pd.DataFrame:
     if kind == "xlsx":
         raw = pd.read_excel(io.BytesIO(content), header=None, dtype=object)
     else:
-        # Try utf-8 first, fall back to latin-1; auto-detect delimiter.
+        # Try utf-8 first, fall back to latin-1
+        # For CSV with variable column counts (preamble lines), we need to be flexible
         try:
-            raw = pd.read_csv(io.BytesIO(content), header=None, dtype=object, sep=None, engine="python")
+            # First, scan to find max columns
+            lines = content.decode('utf-8').splitlines()
+            max_cols = max((line.count(',') + 1 for line in lines if line.strip()), default=1)
+            # Now read with that many columns, filling missing values
+            raw = pd.read_csv(
+                io.BytesIO(content), header=None, dtype=object, 
+                sep=',', names=range(max_cols), engine='python'
+            )
         except UnicodeDecodeError:
-            raw = pd.read_csv(io.BytesIO(content), header=None, dtype=object, sep=None,
-                              engine="python", encoding="latin-1")
+            lines = content.decode('latin-1').splitlines()
+            max_cols = max((line.count(',') + 1 for line in lines if line.strip()), default=1)
+            raw = pd.read_csv(
+                io.BytesIO(content), header=None, dtype=object,
+                sep=',', names=range(max_cols), engine='python', encoding="latin-1"
+            )
 
     if raw.empty:
         return pd.DataFrame()
@@ -193,7 +240,7 @@ _FIELD_ALIASES: List[Tuple[str, List[str]]] = [
     ("costPrice", [
         "cost_price", "cost_ht", "prix_achat", "prix_achat_ht", "wholesale_price",
         "wholesale", "purchase_price", "buying_price", "buy_price",
-        "lowest_price_inc_shipping", "eur_lowest_price_inc_shipping",
+        "eur_lowest_price_inc_shipping", "lowest_price_inc_shipping",
         "lowest_price", "lowest_priced_offer",
         "prix_ht", "prix_fournisseur", "prix", "tarif", "price", "unit_price",
     ]),
@@ -223,14 +270,19 @@ _FIELD_ALIASES: List[Tuple[str, List[str]]] = [
     ]),
     ("leadTimeDays", [
         "estimated_delivery_time_weeks", "estimated_delivery_time",
-        "estimated_delivery", "delivery_time", "delivery_delay", "lead_time",
+        "estimated_delivery", "delivery_time_weeks", "delivery_weeks",
+        "delivery_time", "delivery_delay", "lead_time", "lead_time_days",
         "delai_livraison", "delai", "delivery",
+    ]),
+    ("description", [
+        "description", "product_description", "desc", "long_description",
+        "details", "product_details", "features",
     ]),
 ]
 
 # Fields that must NOT be auto-mapped from the same source column
 _EXCLUSIVE_TARGETS = {"supplierSku", "name", "costPrice", "stock", "ean",
-                      "category", "brand", "moq", "packageQty", "leadTimeDays"}
+                      "category", "brand", "moq", "packageQty", "leadTimeDays", "description"}
 
 
 def _alias_matches(alias_norm: str, col_norm: str) -> bool:
@@ -313,8 +365,15 @@ def coerce_row(row: Dict[str, Any], mapping: Dict[str, str]) -> Dict[str, Any]:
         val = row[src]
         if internal == "costPrice":
             out[internal] = _parse_number(val)
-        elif internal in ("stock", "moq", "packageQty", "leadTimeDays"):
+        elif internal in ("stock", "moq", "packageQty"):
             out[internal] = int(_parse_number(val))
+        elif internal == "leadTimeDays":
+            # If source column mentions "weeks", convert to days (weeks * 7)
+            src_lower = src.lower()
+            days = int(_parse_number(val))
+            if "week" in src_lower and days > 0:
+                days = days * 7
+            out[internal] = days
         else:
             out[internal] = str(val).strip() if val is not None else ""
     return out
