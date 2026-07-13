@@ -31,12 +31,9 @@ async def seed():
         })
         print(f"✓ Admin créé: {admin_email} / Admin1234!")
     else:
-        # ensure password
-        await db.users.update_one(
-            {"email": admin_email},
-            {"$set": {"password_hash": pwd_context.hash("Admin1234!")}},
-        )
-        print(f"✓ Admin mis à jour: {admin_email}")
+        # Idempotent : NE PAS réinitialiser le mot de passe d'un compte existant.
+        # (permet à l'utilisateur de changer son mot de passe sans qu'il soit écrasé au rebuild)
+        print(f"↷ Admin déjà présent ({admin_email}) — mot de passe conservé.")
 
     # Suppliers
     suppliers_data = [
