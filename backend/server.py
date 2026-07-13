@@ -177,23 +177,39 @@ def doc_to_json(doc: dict) -> dict:
 
 # ---------- Ownership scoping (multi-user isolation) ----------
 def scope_q(current: dict, base: Optional[dict] = None) -> dict:
-    """Mongo filter scoped to current user unless admin/api_key (see everything)."""
+    """Mongo filter scoped to current user.
+    
+    Admin in isolation mode OR non-admin users → see only their own data.
+    Admin in supervision mode (default) → see everything.
+    API keys → always see everything (not affected by isolation).
+    """
     q = dict(base or {})
-    if current.get("role") not in ("admin", "api_key"):
+    # Admin avec isolationMode activé OU utilisateur non-admin
+    if current.get("isolationMode") or (current.get("role") not in ("admin", "api_key")):
         q["ownerId"] = current.get("id")
     return q
 
 
 def set_owner(doc: dict, current: dict) -> dict:
-    if current.get("role") not in ("admin", "api_key"):
+    """Set ownerId for new documents.
+    
+    Admin in isolation mode OR non-admin → always set ownerId.
+    Admin in supervision mode (default) → no ownerId (global).
+    API keys → no ownerId (global).
+    """
+    if current.get("isolationMode") or (current.get("role") not in ("admin", "api_key")):
         doc["ownerId"] = current.get("id")
     return doc
 
 
 async def owned_ids_set(current: dict, collection):
-    """Set of owned document ids (str) for a collection, or None if admin (all)."""
-    if current.get("role") in ("admin", "api_key"):
-        return None
+    """Set of owned document ids (str) for a collection.
+    
+    Returns None if admin in supervision mode (= all docs).
+    Returns filtered set if admin in isolation mode OR non-admin.
+    """
+    if current.get("role") in ("admin", "api_key") and not current.get("isolationMode"):
+        return None  # Admin en mode supervision → voit tout
     ids = set()
     async for d in collection.find({"ownerId": current.get("id")}, {"_id": 1}):
         ids.add(str(d["_id"]))
@@ -288,11 +304,12 @@ async def register(payload: UserRegister):
         "name": payload.name,
         "password_hash": hash_password(payload.password),
         "role": "admin",
+        "isolationMode": False,  # Nouveau champ
         "created_at": utc_now(),
     }
     r = await db.users.insert_one(doc)
     uid = str(r.inserted_id)
-    token = create_access_token(uid, payload.email, "admin")
+    token = create_access_token(uid, payload.email, "admin", False)
     return LoginResponse(token=token, user=UserPublic(id=uid, email=payload.email, name=payload.name, role="admin"))
 
 
@@ -301,7 +318,8 @@ async def login(payload: UserLogin):
     user = await db.users.find_one({"email": payload.email})
     if not user or not verify_password(payload.password, user.get("password_hash", "")):
         raise HTTPException(401, "Identifiants invalides")
-    token = create_access_token(str(user["_id"]), user["email"], user.get("role", "admin"))
+    isolation_mode = user.get("isolationMode", False)
+    token = create_access_token(str(user["_id"]), user["email"], user.get("role", "admin"), isolation_mode)
     return LoginResponse(token=token, user=UserPublic(
         id=str(user["_id"]), email=user["email"], name=user["name"], role=user.get("role", "admin"),
     ))
@@ -313,6 +331,51 @@ async def me(current=Depends(get_current_user)):
     if not user:
         raise HTTPException(404, "Utilisateur non trouvé")
     return UserPublic(id=str(user["_id"]), email=user["email"], name=user["name"], role=user.get("role", "admin"))
+
+
+@app.get("/api/auth/isolation-status")
+async def get_isolation_status(current=Depends(get_current_user)):
+    """Get current isolation mode status for admin."""
+    if current.get("role") != "admin":
+        return {"available": False, "isolationMode": False, "message": "Mode isolation réservé aux admins"}
+    return {
+        "available": True,
+        "isolationMode": current.get("isolationMode", False),
+        "message": "En mode isolation, vous ne voyez que vos propres données" if current.get("isolationMode") else "En mode supervision, vous voyez toutes les données"
+    }
+
+
+@app.post("/api/auth/toggle-isolation")
+async def toggle_isolation_mode(current=Depends(get_current_user)):
+    """Toggle isolation mode for admin. Returns new token with updated mode."""
+    if current.get("role") != "admin":
+        raise HTTPException(403, "Mode isolation réservé aux administrateurs")
+    
+    user = await db.users.find_one({"_id": oid(current["id"])})
+    if not user:
+        raise HTTPException(404, "Utilisateur non trouvé")
+    
+    # Toggle le mode
+    new_mode = not user.get("isolationMode", False)
+    await db.users.update_one(
+        {"_id": oid(current["id"])},
+        {"$set": {"isolationMode": new_mode}}
+    )
+    
+    # Générer un nouveau token avec le mode à jour
+    new_token = create_access_token(
+        str(user["_id"]), 
+        user["email"], 
+        user.get("role", "admin"),
+        new_mode
+    )
+    
+    return {
+        "success": True,
+        "isolationMode": new_mode,
+        "token": new_token,
+        "message": "Mode isolation activé — Vous ne voyez que vos données" if new_mode else "Mode supervision activé — Vous voyez toutes les données"
+    }
 
 
 # ========== SUPPLIERS ==========

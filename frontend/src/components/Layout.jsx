@@ -3,12 +3,13 @@ import { useEffect, useState } from "react";
 import {
   ChartLineUp, Package, Storefront, ShoppingBag, Percent, ArrowsClockwise,
   BellRinging, SignOut, MagnifyingGlass, PlugsConnected, DownloadSimple, Robot, Key,
-  Users as UsersIcon, Buildings, Gear, TrendUp,
+  Users as UsersIcon, Buildings, Gear, TrendUp, LockSimple, LockSimpleOpen,
 } from "@phosphor-icons/react";
 import { useAuth } from "../lib/auth";
 import api from "../lib/api";
 import { cn } from "../lib/format";
 import CommandPalette from "./CommandPalette";
+import { toast } from "sonner";
 
 const links = [
   { to: "/", label: "Tableau de bord", icon: ChartLineUp, testid: "nav-dashboard" },
@@ -27,10 +28,39 @@ const links = [
 ];
 
 export default function Layout({ children }) {
-  const { user, logout } = useAuth();
+  const { user, logout, setToken } = useAuth();
   const navigate = useNavigate();
   const [unread, setUnread] = useState(0);
   const [paletteOpen, setPaletteOpen] = useState(false);
+  const [isolationMode, setIsolationMode] = useState(false);
+  const [isolationLoading, setIsolationLoading] = useState(false);
+
+  // Load isolation status
+  useEffect(() => {
+    if (user?.role === "admin") {
+      api.get("/auth/isolation-status").then((r) => {
+        if (r.data.available) {
+          setIsolationMode(r.data.isolationMode || false);
+        }
+      }).catch(() => {});
+    }
+  }, [user]);
+
+  const toggleIsolation = async () => {
+    setIsolationLoading(true);
+    try {
+      const r = await api.post("/auth/toggle-isolation");
+      setIsolationMode(r.data.isolationMode);
+      setToken(r.data.token); // Update token with new isolation mode
+      toast.success(r.data.message);
+      // Refresh page to apply new scope
+      window.location.reload();
+    } catch (e) {
+      toast.error(e.response?.data?.detail || "Erreur");
+    } finally {
+      setIsolationLoading(false);
+    }
+  };
 
   useEffect(() => {
     let mounted = true;
@@ -97,6 +127,37 @@ export default function Layout({ children }) {
             </NavLink>
           ))}
         </nav>
+
+        {/* Isolation Mode Toggle (Admin only) */}
+        {user?.role === "admin" && (
+          <div className="px-4 py-3 border-t border-zinc-800">
+            <button
+              onClick={toggleIsolation}
+              disabled={isolationLoading}
+              className={cn(
+                "w-full flex items-center gap-3 px-3 py-2.5 text-xs font-medium transition-all",
+                isolationMode
+                  ? "bg-blue-500/10 text-blue-400 border border-blue-500/30 hover:bg-blue-500/20"
+                  : "bg-zinc-800/50 text-zinc-400 border border-zinc-700/50 hover:bg-zinc-800"
+              )}
+              data-testid="isolation-toggle-btn"
+            >
+              {isolationMode ? (
+                <LockSimple size={16} weight="bold" />
+              ) : (
+                <LockSimpleOpen size={16} weight="bold" />
+              )}
+              <div className="flex-1 text-left">
+                <div className="font-semibold leading-none mb-0.5">
+                  {isolationMode ? "Mode Isolation" : "Mode Supervision"}
+                </div>
+                <div className="text-[10px] leading-tight opacity-80">
+                  {isolationMode ? "Vos données uniquement" : "Toutes les données"}
+                </div>
+              </div>
+            </button>
+          </div>
+        )}
 
         <div className="px-4 py-4 border-t border-zinc-800 text-xs">
           <div className="text-zinc-400 mb-2 mono uppercase tracking-widest text-[10px]">

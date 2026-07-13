@@ -24,9 +24,9 @@ def verify_password(password: str, hashed: str) -> bool:
     return pwd_context.verify(password, hashed)
 
 
-def create_access_token(user_id: str, email: str, role: str = "admin") -> str:
+def create_access_token(user_id: str, email: str, role: str = "admin", isolation_mode: bool = False) -> str:
     expire = datetime.now(timezone.utc) + timedelta(minutes=JWT_EXPIRE_MINUTES)
-    payload = {"sub": user_id, "email": email, "role": role, "exp": expire}
+    payload = {"sub": user_id, "email": email, "role": role, "isolationMode": isolation_mode, "exp": expire}
     return jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
 
 
@@ -65,6 +65,7 @@ async def get_current_user(
         return {
             "id": payload["sub"], "email": payload["email"],
             "role": payload.get("role", "admin"),
+            "isolationMode": payload.get("isolationMode", False),
             "scopes": ["*"],
         }
     except JWTError:

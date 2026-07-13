@@ -44,8 +44,12 @@ export function AuthProvider({ children }) {
     setUser(null);
   };
 
+  const setToken = (newToken) => {
+    localStorage.setItem("mb_token", newToken);
+  };
+
   return (
-    <AuthContext.Provider value={{ user, login, logout, loading }}>
+    <AuthContext.Provider value={{ user, login, logout, loading, setToken }}>
       {children}
     </AuthContext.Provider>
   );
