@@ -1,4 +1,11 @@
-# EuropaDrop — PRD v1.5
+# EuropaDrop — PRD v1.6
+
+## Tech Stack
+### v1.6 (session 7 — catégories dynamiques + isolation étendue, juillet 2026)
+- **Catégories dynamiques par utilisateur** : plus de liste codée en dur (niche bébé). Filtres du catalogue = `GET /api/products/categories` (distinct scopé) ; champ catégorie du formulaire produit = saisie libre + datalist. Chaque niche fonctionne.
+- **Isolation étendue** à `suppliers`, `supplier-products`, `pricing-rules` (en plus de products/orders/stores/notifications/competitor-prices/settings). Calcul de prix owner-aware (`load_active_pricing_rules(owner_id)`). Vérifié : un opérateur voit 0 donnée d'autrui ; l'admin (super-admin) voit tout.
+- **Suppression groupée** : Catalogue (`bulk-delete-btn`) + Commandes (`bulk-delete-orders-btn`).
+- Fix seed idempotent (mot de passe admin non réinitialisé) + fichiers déploiement VPS.
 
 ## Tech Stack
 ### v1.5 (session 6 — CRUD complet UI + déploiement VPS, juillet 2026)

@@ -8,8 +8,6 @@ import {
   CloudArrowUp, Robot, FileCsv, Buildings, CheckSquare, CaretDown, Plus, Trash, PencilSimple,
 } from "@phosphor-icons/react";
 
-const CATEGORIES = ["Tous", "Hygiène", "Soins", "Bain", "Repas", "Déplacement"];
-
 const TABS = [
   { key: "all", label: "Tous", testid: "tab-all" },
   { key: "imported", label: "Importés", testid: "tab-imported", desc: "Non publiés sur WooCommerce" },
@@ -31,6 +29,7 @@ export default function Catalog() {
   const [busy, setBusy] = useState(false);
   const [showForm, setShowForm] = useState(false);
   const [editProduct, setEditProduct] = useState(null);
+  const [categories, setCategories] = useState([]);
 
   const load = () => {
     setLoading(true);
@@ -44,6 +43,7 @@ export default function Catalog() {
       setLoading(false);
     });
     api.get("/products/stats").then((r) => setStats(r.data));
+    api.get("/products/categories").then((r) => setCategories(r.data.categories || []));
   };
 
   useEffect(() => { load(); /* eslint-disable-next-line */ }, [cat, tab]);
@@ -188,7 +188,7 @@ export default function Catalog() {
             data-testid="catalog-search"
           />
         </div>
-        {CATEGORIES.map((c) => (
+        {["Tous", ...categories].map((c) => (
           <button
             key={c}
             onClick={() => setCat(c)}
@@ -337,6 +337,7 @@ export default function Catalog() {
       {showForm && (
         <ProductFormModal
           product={editProduct}
+          categories={categories}
           onClose={() => { setShowForm(false); setEditProduct(null); }}
           onSaved={() => { setShowForm(false); setEditProduct(null); load(); }}
         />
@@ -658,7 +659,7 @@ function MetricBox({ label, value }) {
   );
 }
 
-function ProductFormModal({ product, onClose, onSaved }) {
+function ProductFormModal({ product, categories = [], onClose, onSaved }) {
   const isEdit = !!product?.id;
   const [form, setForm] = useState({
     sku: product?.sku || "",
@@ -718,10 +719,17 @@ function ProductFormModal({ product, onClose, onSaved }) {
             </div>
             <div>
               <label className="label">Catégorie</label>
-              <select className="input" value={form.category} onChange={(e) => set("category", e.target.value)}>
-                <option value="">—</option>
-                {["Hygiène", "Soins", "Bain", "Repas", "Déplacement"].map((c) => <option key={c}>{c}</option>)}
-              </select>
+              <input
+                className="input"
+                list="product-categories-list"
+                value={form.category}
+                onChange={(e) => set("category", e.target.value)}
+                placeholder="Saisir ou choisir…"
+                data-testid="product-category"
+              />
+              <datalist id="product-categories-list">
+                {categories.map((c) => <option key={c} value={c} />)}
+              </datalist>
             </div>
           </div>
           <div>

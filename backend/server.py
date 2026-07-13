@@ -200,9 +200,14 @@ async def owned_ids_set(current: dict, collection):
     return ids
 
 
-async def load_active_pricing_rules() -> List[PricingRule]:
+async def load_active_pricing_rules(owner_id: Optional[str] = None) -> List[PricingRule]:
+    q = {"isActive": True}
+    if owner_id:
+        q["$or"] = [{"ownerId": owner_id}, {"ownerId": None}, {"ownerId": {"$exists": False}}]
+    else:
+        q["$or"] = [{"ownerId": None}, {"ownerId": {"$exists": False}}]
     rules = []
-    async for r in db.pricing_rules.find({"isActive": True}):
+    async for r in db.pricing_rules.find(q):
         rules.append(PricingRule.from_mongo(r))
     return rules
 
@@ -219,7 +224,7 @@ async def refresh_product_aggregates(product_id: str):
         return
     best_cost = min(sp["costPrice"] for sp in sps)
     total_stock = sum(sp.get("stock", 0) for sp in sps)
-    rules = await load_active_pricing_rules()
+    rules = await load_active_pricing_rules(prod.get("ownerId"))
     rule = find_best_rule(rules, prod.get("category"), None)
     retail = compute_retail_price(best_cost, rule)
     await db.products.update_one(
@@ -310,23 +315,23 @@ async def me(current=Depends(get_current_user)):
 
 # ========== SUPPLIERS ==========
 @app.get("/api/suppliers")
-async def list_suppliers(active_only: bool = False, _=Depends(get_current_user)):
-    q = {"isActive": True} if active_only else {}
+async def list_suppliers(active_only: bool = False, current=Depends(get_current_user)):
+    q = scope_q(current, {"isActive": True}) if active_only else scope_q(current)
     docs = await db.suppliers.find(q).to_list(None)
     return {"success": True, "count": len(docs), "data": [doc_to_json(d) for d in docs]}
 
 
 @app.get("/api/suppliers/{sid}")
-async def get_supplier(sid: str, _=Depends(get_current_user)):
-    doc = await db.suppliers.find_one({"_id": oid(sid)})
+async def get_supplier(sid: str, current=Depends(get_current_user)):
+    doc = await db.suppliers.find_one({**scope_q(current), "_id": oid(sid)})
     if not doc:
         raise HTTPException(404, "Fournisseur non trouvé")
     return doc_to_json(doc)
 
 
 @app.post("/api/suppliers")
-async def create_supplier(payload: Supplier, _=Depends(get_current_user)):
-    doc = payload.to_mongo()
+async def create_supplier(payload: Supplier, current=Depends(get_current_user)):
+    doc = set_owner(payload.to_mongo(), current)
     doc["lastUpdated"] = utc_now()
     r = await db.suppliers.insert_one(doc)
     doc["_id"] = r.inserted_id
@@ -334,16 +339,17 @@ async def create_supplier(payload: Supplier, _=Depends(get_current_user)):
 
 
 @app.put("/api/suppliers/{sid}")
-async def update_supplier(sid: str, payload: dict, _=Depends(get_current_user)):
+async def update_supplier(sid: str, payload: dict, current=Depends(get_current_user)):
+    payload.pop("ownerId", None)
     payload["lastUpdated"] = utc_now()
-    await db.suppliers.update_one({"_id": oid(sid)}, {"$set": payload})
+    await db.suppliers.update_one({**scope_q(current), "_id": oid(sid)}, {"$set": payload})
     doc = await db.suppliers.find_one({"_id": oid(sid)})
     return doc_to_json(doc)
 
 
 @app.delete("/api/suppliers/{sid}")
-async def delete_supplier(sid: str, _=Depends(get_current_user)):
-    await db.suppliers.delete_one({"_id": oid(sid)})
+async def delete_supplier(sid: str, current=Depends(get_current_user)):
+    await db.suppliers.delete_one({**scope_q(current), "_id": oid(sid)})
     return {"success": True}
 
 
@@ -416,6 +422,12 @@ async def products_stats(current=Depends(get_current_user)):
     }
 
 
+@app.get("/api/products/categories")
+async def product_categories(current=Depends(get_current_user)):
+    cats = await db.products.distinct("category", scope_q(current))
+    return {"success": True, "categories": sorted([c for c in cats if c])}
+
+
 @app.get("/api/products/{pid}")
 async def get_product(pid: str, current=Depends(get_current_user)):
     doc = await db.products.find_one({**scope_q(current), "_id": oid(pid)})
@@ -470,9 +482,9 @@ async def delete_product(pid: str, current=Depends(get_current_user)):
 @app.get("/api/supplier-products")
 async def list_supplier_products(
     supplierId: Optional[str] = None, productId: Optional[str] = None,
-    _=Depends(get_current_user),
+    current=Depends(get_current_user),
 ):
-    filt = {}
+    filt = scope_q(current)
     if supplierId:
         filt["supplierId"] = supplierId
     if productId:
@@ -482,8 +494,8 @@ async def list_supplier_products(
 
 
 @app.post("/api/supplier-products")
-async def create_supplier_product(payload: SupplierProduct, _=Depends(get_current_user)):
-    doc = payload.to_mongo()
+async def create_supplier_product(payload: SupplierProduct, current=Depends(get_current_user)):
+    doc = set_owner(payload.to_mongo(), current)
     doc["lastUpdated"] = utc_now()
     r = await db.supplier_products.insert_one(doc)
     doc["_id"] = r.inserted_id
@@ -492,17 +504,18 @@ async def create_supplier_product(payload: SupplierProduct, _=Depends(get_curren
 
 
 @app.put("/api/supplier-products/{spid}")
-async def update_supplier_product(spid: str, payload: dict, _=Depends(get_current_user)):
+async def update_supplier_product(spid: str, payload: dict, current=Depends(get_current_user)):
+    payload.pop("ownerId", None)
     payload["lastUpdated"] = utc_now()
-    await db.supplier_products.update_one({"_id": oid(spid)}, {"$set": payload})
+    await db.supplier_products.update_one({**scope_q(current), "_id": oid(spid)}, {"$set": payload})
     doc = await db.supplier_products.find_one({"_id": oid(spid)})
     await refresh_product_aggregates(doc["productId"])
     return doc_to_json(doc)
 
 
 @app.delete("/api/supplier-products/{spid}")
-async def delete_supplier_product(spid: str, _=Depends(get_current_user)):
-    doc = await db.supplier_products.find_one({"_id": oid(spid)})
+async def delete_supplier_product(spid: str, current=Depends(get_current_user)):
+    doc = await db.supplier_products.find_one({**scope_q(current), "_id": oid(spid)})
     if doc:
         await db.supplier_products.delete_one({"_id": oid(spid)})
         await refresh_product_aggregates(doc["productId"])
@@ -524,14 +537,14 @@ async def best_supplier(pid: str, strategy: str = "cheapest", _=Depends(get_curr
 
 # ========== PRICING RULES ==========
 @app.get("/api/pricing-rules")
-async def list_rules(_=Depends(get_current_user)):
-    docs = await db.pricing_rules.find().sort("priority", -1).to_list(None)
+async def list_rules(current=Depends(get_current_user)):
+    docs = await db.pricing_rules.find(scope_q(current)).sort("priority", -1).to_list(None)
     return {"success": True, "data": [doc_to_json(d) for d in docs]}
 
 
 @app.post("/api/pricing-rules")
-async def create_rule(payload: PricingRule, _=Depends(get_current_user)):
-    doc = payload.to_mongo()
+async def create_rule(payload: PricingRule, current=Depends(get_current_user)):
+    doc = set_owner(payload.to_mongo(), current)
     doc["createdAt"] = utc_now()
     r = await db.pricing_rules.insert_one(doc)
     doc["_id"] = r.inserted_id
@@ -539,23 +552,24 @@ async def create_rule(payload: PricingRule, _=Depends(get_current_user)):
 
 
 @app.put("/api/pricing-rules/{rid}")
-async def update_rule(rid: str, payload: dict, _=Depends(get_current_user)):
-    await db.pricing_rules.update_one({"_id": oid(rid)}, {"$set": payload})
+async def update_rule(rid: str, payload: dict, current=Depends(get_current_user)):
+    payload.pop("ownerId", None)
+    await db.pricing_rules.update_one({**scope_q(current), "_id": oid(rid)}, {"$set": payload})
     doc = await db.pricing_rules.find_one({"_id": oid(rid)})
     return doc_to_json(doc)
 
 
 @app.delete("/api/pricing-rules/{rid}")
-async def delete_rule(rid: str, _=Depends(get_current_user)):
-    await db.pricing_rules.delete_one({"_id": oid(rid)})
+async def delete_rule(rid: str, current=Depends(get_current_user)):
+    await db.pricing_rules.delete_one({**scope_q(current), "_id": oid(rid)})
     return {"success": True}
 
 
 @app.post("/api/pricing-rules/apply-all")
-async def apply_all_rules(_=Depends(get_current_user)):
+async def apply_all_rules(current=Depends(get_current_user)):
     """Recompute retail price of all products with active rules."""
     count = 0
-    async for prod in db.products.find({}):
+    async for prod in db.products.find(scope_q(current)):
         await refresh_product_aggregates(str(prod["_id"]))
         count += 1
     return {"success": True, "updated": count}
@@ -998,7 +1012,7 @@ async def mark_all_read(_=Depends(get_current_user)):
 async def dashboard_overview(current=Depends(get_current_user)):
     pq = scope_q(current)
     total_products = await db.products.count_documents(pq)
-    total_suppliers = await db.suppliers.count_documents({"isActive": True})
+    total_suppliers = await db.suppliers.count_documents(scope_q(current, {"isActive": True}))
     total_orders = await db.orders.count_documents(pq)
     pending_orders = await db.orders.count_documents({**pq, "status": "pending"})
 
