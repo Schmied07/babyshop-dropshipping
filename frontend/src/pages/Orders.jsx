@@ -87,6 +87,17 @@ export default function Orders() {
     }
   };
 
+  const bulkDelete = async () => {
+    if (selected.size === 0) return;
+    if (!window.confirm(`Supprimer ${selected.size} commande(s) ? Action irréversible.`)) return;
+    const res = await Promise.allSettled([...selected].map((id) => api.delete(`/orders/${id}`)));
+    const ok = res.filter((r) => r.status === "fulfilled").length;
+    const ko = res.length - ok;
+    toast[ko ? "warning" : "success"](`${ok} commande(s) supprimée(s)${ko ? ` · ${ko} échec(s)` : ""}`);
+    setSelected(new Set());
+    load();
+  };
+
   return (
     <div className="p-8 lg:p-12 fade-up">
       <PageHeader
@@ -112,6 +123,14 @@ export default function Orders() {
               data-testid="bulk-fulfill-btn"
             >
               <Lightning size={14} weight="bold" /> Traiter en masse ({selected.size})
+            </button>
+            <button
+              className="btn bg-critical text-white hover:opacity-90"
+              onClick={bulkDelete}
+              disabled={selected.size === 0}
+              data-testid="bulk-delete-orders-btn"
+            >
+              <Trash size={14} weight="bold" /> Supprimer ({selected.size})
             </button>
             <button className="btn btn-primary" onClick={() => setShowCreate(true)} data-testid="add-order-btn">
               <Plus size={14} weight="bold" /> Nouvelle commande

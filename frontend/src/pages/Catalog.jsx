@@ -115,6 +115,23 @@ export default function Catalog() {
     }
   };
 
+  const runBulkDelete = async () => {
+    if (!window.confirm(`Supprimer ${checked.size} produit(s) ? Cette action est irréversible.`)) return;
+    setBusy(true);
+    try {
+      const res = await Promise.allSettled([...checked].map((id) => api.delete(`/products/${id}`)));
+      const ok = res.filter((r) => r.status === "fulfilled").length;
+      const ko = res.length - ok;
+      toast[ko ? "warning" : "success"](`${ok} produit(s) supprimé(s)${ko ? ` · ${ko} échec(s)` : ""}`);
+      setChecked(new Set());
+      load();
+    } catch (e) {
+      toast.error("Erreur lors de la suppression groupée");
+    } finally {
+      setBusy(false);
+    }
+  };
+
   return (
     <div className="p-8 lg:p-12 fade-up">
       <PageHeader
@@ -209,6 +226,9 @@ export default function Catalog() {
           </div>
           <button className="btn btn-primary text-[12px]" onClick={() => setPublishOpen(true)} disabled={busy} data-testid="bulk-publish-btn">
             <CloudArrowUp size={14} weight="bold" /> Publier vers boutiques
+          </button>
+          <button className="btn text-[12px] bg-critical text-white hover:opacity-90" onClick={runBulkDelete} disabled={busy} data-testid="bulk-delete-btn">
+            <Trash size={14} weight="bold" /> Supprimer ({checked.size})
           </button>
           <button className="text-white/70 hover:text-white p-1" onClick={() => setChecked(new Set())} data-testid="bulk-clear-btn" aria-label="Effacer">
             <X size={16} weight="bold" />
