@@ -8,9 +8,21 @@ import httpx
 DEEPSEEK_API_KEY = os.environ.get("DEEPSEEK_API_KEY", "")
 DEEPSEEK_BASE_URL = os.environ.get("DEEPSEEK_BASE_URL", "https://api.deepseek.com/v1")
 
+# Runtime key set from app settings (UI) takes priority over the .env value.
+_runtime_key: Optional[str] = None
+
+
+def set_api_key(key: Optional[str]) -> None:
+    global _runtime_key
+    _runtime_key = (key or "").strip() or None
+
+
+def current_key() -> str:
+    return _runtime_key or DEEPSEEK_API_KEY
+
 
 def is_configured() -> bool:
-    return bool(DEEPSEEK_API_KEY)
+    return bool(current_key())
 
 
 async def chat(
@@ -22,6 +34,7 @@ async def chat(
 ) -> str:
     if not is_configured():
         raise RuntimeError("DEEPSEEK_API_KEY manquant")
+    api_key = current_key()
     payload: Dict[str, Any] = {
         "model": model,
         "messages": messages,
@@ -34,7 +47,7 @@ async def chat(
         r = await client.post(
             f"{DEEPSEEK_BASE_URL}/chat/completions",
             headers={
-                "Authorization": f"Bearer {DEEPSEEK_API_KEY}",
+                "Authorization": f"Bearer {api_key}",
                 "Content-Type": "application/json",
             },
             json=payload,

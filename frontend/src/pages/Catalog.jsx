@@ -30,6 +30,8 @@ export default function Catalog() {
   const [showForm, setShowForm] = useState(false);
   const [editProduct, setEditProduct] = useState(null);
   const [categories, setCategories] = useState([]);
+  const [total, setTotal] = useState(0);
+  const [selectAllMatching, setSelectAllMatching] = useState(false);
 
   const load = () => {
     setLoading(true);
@@ -39,7 +41,9 @@ export default function Catalog() {
     if (tab !== "all") params.sync_status = tab;
     api.get("/products", { params }).then((r) => {
       setProducts(r.data.data || []);
+      setTotal(r.data.pagination?.total || 0);
       setChecked(new Set());
+      setSelectAllMatching(false);
       setLoading(false);
     });
     api.get("/products/stats").then((r) => setStats(r.data));
@@ -61,9 +65,10 @@ export default function Catalog() {
     const next = new Set(checked);
     next.has(id) ? next.delete(id) : next.add(id);
     setChecked(next);
+    setSelectAllMatching(false);
   };
   const toggleAll = () => {
-    if (checked.size === products.length) setChecked(new Set());
+    if (checked.size === products.length) { setChecked(new Set()); setSelectAllMatching(false); }
     else setChecked(new Set(products.map((p) => p.id)));
   };
 
@@ -116,17 +121,25 @@ export default function Catalog() {
   };
 
   const runBulkDelete = async () => {
-    if (!window.confirm(`Supprimer ${checked.size} produit(s) ? Cette action est irréversible.`)) return;
+    const n = selectAllMatching ? total : checked.size;
+    if (!window.confirm(`Supprimer ${n} produit(s) ? Cette action est irréversible.`)) return;
     setBusy(true);
     try {
-      const res = await Promise.allSettled([...checked].map((id) => api.delete(`/products/${id}`)));
-      const ok = res.filter((r) => r.status === "fulfilled").length;
-      const ko = res.length - ok;
-      toast[ko ? "warning" : "success"](`${ok} produit(s) supprimé(s)${ko ? ` · ${ko} échec(s)` : ""}`);
+      const body = selectAllMatching
+        ? {
+            all: true,
+            q: q || undefined,
+            category: cat !== "Tous" ? cat : undefined,
+            sync_status: tab !== "all" ? tab : undefined,
+          }
+        : { ids: [...checked] };
+      const r = await api.post("/products/bulk-delete", body);
+      toast.success(`${r.data.deleted} produit(s) supprimé(s)`);
       setChecked(new Set());
+      setSelectAllMatching(false);
       load();
     } catch (e) {
-      toast.error("Erreur lors de la suppression groupée");
+      toast.error(e.response?.data?.detail || "Erreur lors de la suppression groupée");
     } finally {
       setBusy(false);
     }
@@ -204,7 +217,25 @@ export default function Catalog() {
       {checked.size > 0 && (
         <div className="flex items-center gap-3 mb-4 p-3 bg-black text-white sticky top-16 z-20 fade-up" data-testid="bulk-toolbar">
           <CheckSquare size={18} weight="fill" className="text-white" />
-          <span className="text-[13px] font-semibold">{checked.size} sélectionné(s)</span>
+          <span className="text-[13px] font-semibold">{selectAllMatching ? total : checked.size} sélectionné(s)</span>
+          {!selectAllMatching && checked.size === products.length && total > products.length && (
+            <button
+              className="text-[12px] underline text-white/90 hover:text-white"
+              onClick={() => setSelectAllMatching(true)}
+              data-testid="select-all-matching-btn"
+            >
+              Sélectionner les {total} produits du filtre
+            </button>
+          )}
+          {selectAllMatching && (
+            <button
+              className="text-[12px] underline text-white/90 hover:text-white"
+              onClick={() => { setSelectAllMatching(false); setChecked(new Set()); }}
+              data-testid="clear-all-matching-btn"
+            >
+              Annuler la sélection
+            </button>
+          )}
           <div className="flex-1" />
           <div className="relative">
             <button className="btn btn-secondary text-[12px]" onClick={() => setAiOpen((o) => !o)} disabled={busy} data-testid="bulk-ai-btn">
@@ -228,7 +259,7 @@ export default function Catalog() {
             <CloudArrowUp size={14} weight="bold" /> Publier vers boutiques
           </button>
           <button className="btn text-[12px] bg-critical text-white hover:opacity-90" onClick={runBulkDelete} disabled={busy} data-testid="bulk-delete-btn">
-            <Trash size={14} weight="bold" /> Supprimer ({checked.size})
+            <Trash size={14} weight="bold" /> Supprimer ({selectAllMatching ? total : checked.size})
           </button>
           <button className="text-white/70 hover:text-white p-1" onClick={() => setChecked(new Set())} data-testid="bulk-clear-btn" aria-label="Effacer">
             <X size={16} weight="bold" />

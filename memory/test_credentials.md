@@ -3,18 +3,22 @@
 ## Admin (Atlas prod DB `europadrop` — user-managed)
 - **Email**: admin@creook.fr  (mot de passe géré par l'utilisateur, inconnu de l'agent)
 
+## QA Tester (Atlas prod DB `europadrop` — created for frontend testing, isolated operator)
+- **Email**: qa.tester@europadrop.test
+- **Password**: QaTest1234!
+- **Role**: operator (isolated — voit uniquement ses ~12 produits jetables "QA Produit N", catégorie "QA Test")
+- Seedé avec 12 produits jetables pour tester la suppression individuelle et groupée. Supprimable sans impact sur les vraies données.
+
+## Operator réel (Atlas)
+- **Email**: thierry@gmail.com (mot de passe géré par l'utilisateur, inconnu de l'agent)
+
 ## Admin (seed local par défaut — pour tests en sandbox)
 - **Email**: admin@marcherbien.fr
 - **Password**: Admin1234!
-- **Role**: admin (voit toutes les données)
-
-## Operator (test user — create via POST /api/users as admin if missing)
-- **Email**: operator@marcherbien.fr
-- **Password**: Op1234!
-- **Role**: operator (isolated: sees only its own stores/products/orders)
+- **Role**: admin
 
 ## Backend URL
-- Preview: https://command-palette-8.preview.emergentagent.com
+- Preview: voir frontend/.env REACT_APP_BACKEND_URL
 - API base: {URL}/api
 - Swagger: {URL}/api/docs
 
@@ -24,10 +28,8 @@
 - Consumer Secret: cs_e83d03dd16dae8d21c02a1d70089ce87a37d302a
 
 ## DeepSeek AI
-- **Key**: CONFIGURÉE (fournie par l'utilisateur, dans backend/.env `DEEPSEEK_API_KEY`). Sur le VPS, ajouter la même clé dans le `.env` de production.
+- Clé dans backend/.env `DEEPSEEK_API_KEY`. Peut désormais aussi être saisie via l'UI : page Réglages → carte "Intelligence Artificielle (DeepSeek)" (admin uniquement). Stockée dans app_settings key `integrations:deepseek`, prioritaire sur le .env.
 
 ## Notes
-- Le preview pointe vers le **MongoDB Atlas de l'utilisateur** (`europadrop`). Pour tester sans polluer la prod, basculer temporairement `backend/.env` vers `mongodb://localhost:27017` + `DB_NAME=europadrop_sandbox`, `python seed.py`, puis restaurer Atlas.
-- backend/.env et frontend/.env sont gitignored (recréés après reset d'environnement).
-- pydantic-core épinglé à 2.23.4 pour matcher pydantic 2.9.2.
-- Fichiers de déploiement VPS : dossier `/app/deploy/` + `docker-compose.yml` racine (EuropaDrop FastAPI+React ; les anciens fichiers Node « Babyshop » ont été supprimés).
+- Preview pointe vers le MongoDB Atlas de l'utilisateur (`europadrop`).
+- Qogita: identifiants live = talomthibaut@gmail.com. Intégration EN PAUSE (l'utilisateur demande l'accès API publique). API interne Qogita: pas de recherche texte REST, pas de prix stable, pas d'export webhook fiable.

@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import { Gear, FloppyDisk, CurrencyEur, Percent } from "@phosphor-icons/react";
+import { Gear, FloppyDisk, CurrencyEur, Percent, Robot, CheckCircle, XCircle } from "@phosphor-icons/react";
 import api from "../lib/api";
 import { PageHeader, Card, Loading } from "../components/Bits";
 
@@ -14,10 +14,31 @@ const CURRENCIES = [
 export default function Settings() {
   const [s, setS] = useState(null);
   const [saving, setSaving] = useState(false);
+  const [ds, setDs] = useState({ configured: false, hasKey: false, keyPreview: "" });
+  const [dsKey, setDsKey] = useState("");
+  const [dsSaving, setDsSaving] = useState(false);
 
   useEffect(() => {
     api.get("/settings").then((r) => setS(r.data.settings));
+    api.get("/integrations/deepseek").then((r) => setDs(r.data)).catch(() => {});
   }, []);
+
+  const saveDeepseek = async () => {
+    if (!dsKey.trim()) { toast.error("Saisissez une clé DeepSeek"); return; }
+    setDsSaving(true);
+    try {
+      const r = await api.put("/integrations/deepseek", { apiKey: dsKey.trim() });
+      setDs({ ...ds, configured: r.data.configured, hasKey: true });
+      setDsKey("");
+      toast.success("Clé DeepSeek enregistrée");
+      const info = await api.get("/integrations/deepseek");
+      setDs(info.data);
+    } catch (e) {
+      toast.error(e.response?.data?.detail || "Erreur d'enregistrement");
+    } finally {
+      setDsSaving(false);
+    }
+  };
 
   const save = async () => {
     setSaving(true);
@@ -104,6 +125,38 @@ export default function Settings() {
             <div className="uppercase tracking-widest text-[10px] text-muted-foreground mb-1">Aperçu</div>
             Prix HT de référence <span className="mono font-semibold">42,99 €</span> →{" "}
             <span className="mono font-semibold">{withVat.toFixed(2)} € {s.vatIncluded ? "TTC" : `TTC (TVA ${s.vatRate}%)`}</span>
+          </div>
+        </div>
+      </Card>
+
+      <Card title="Intelligence Artificielle (DeepSeek)" className="mt-6">
+        <div className="p-5 space-y-4">
+          <div className="flex items-center gap-2 text-[13px]">
+            {ds.configured ? (
+              <><CheckCircle size={18} weight="fill" className="text-success" /> <span className="font-semibold text-success">Clé configurée</span>{ds.keyPreview && <span className="mono text-[11px] text-muted-foreground">{ds.keyPreview}</span>}</>
+            ) : (
+              <><XCircle size={18} weight="fill" className="text-critical" /> <span className="font-semibold text-critical">Aucune clé configurée</span></>
+            )}
+          </div>
+          <p className="text-[12px] text-muted-foreground">
+            La clé DeepSeek active la traduction FR, les descriptions SEO, les actions IA en masse et le mapping intelligent à l'import.
+            Obtenez une clé sur <span className="mono">platform.deepseek.com</span>.
+          </p>
+          <div className="flex items-center gap-2">
+            <div className="relative flex-1 max-w-md">
+              <Robot size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" weight="bold" />
+              <input
+                type="password"
+                className="input pl-9"
+                placeholder="sk-..."
+                value={dsKey}
+                onChange={(e) => setDsKey(e.target.value)}
+                data-testid="deepseek-key-input"
+              />
+            </div>
+            <button className="btn btn-primary" onClick={saveDeepseek} disabled={dsSaving} data-testid="deepseek-save-btn">
+              <FloppyDisk size={14} weight="bold" /> {dsSaving ? "Enregistrement…" : "Enregistrer la clé"}
+            </button>
           </div>
         </div>
       </Card>

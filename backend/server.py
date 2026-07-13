@@ -477,7 +477,51 @@ async def update_product(pid: str, payload: dict, current=Depends(get_current_us
 async def delete_product(pid: str, current=Depends(get_current_user)):
     await db.products.delete_one({**scope_q(current), "_id": oid(pid)})
     await db.supplier_products.delete_many({"productId": pid})
+    await db.product_mappings.delete_many({"internalProductId": pid})
     return {"success": True}
+
+
+class BulkDeleteProducts(BaseModel):
+    ids: Optional[List[str]] = None
+    all: bool = False
+    q: Optional[str] = None
+    category: Optional[str] = None
+    sync_status: Optional[str] = None
+
+
+@app.post("/api/products/bulk-delete")
+async def bulk_delete_products(payload: BulkDeleteProducts, current=Depends(get_current_user)):
+    """Delete many products in a single request (scoped to owner)."""
+    filt: dict = scope_q(current)
+    if payload.all:
+        if payload.q:
+            filt["$or"] = [
+                {"name": {"$regex": payload.q, "$options": "i"}},
+                {"sku": {"$regex": payload.q, "$options": "i"}},
+            ]
+        if payload.category and payload.category != "Tous":
+            filt["category"] = payload.category
+        if payload.sync_status and payload.sync_status != "all":
+            synced_ids = set()
+            async for m in db.product_mappings.find({"lastSyncStatus": {"$in": ["success", "mocked"]}}):
+                synced_ids.add(m["internalProductId"])
+            if payload.sync_status == "published":
+                filt["_id"] = {"$in": [oid(i) for i in synced_ids]}
+            elif payload.sync_status in ("imported", "not_published"):
+                filt["_id"] = {"$nin": [oid(i) for i in synced_ids]}
+    else:
+        ids = [oid(i) for i in (payload.ids or [])]
+        if not ids:
+            return {"success": True, "deleted": 0}
+        filt["_id"] = {"$in": ids}
+
+    to_del = [str(d["_id"]) async for d in db.products.find(filt, {"_id": 1})]
+    if not to_del:
+        return {"success": True, "deleted": 0}
+    res = await db.products.delete_many(filt)
+    await db.supplier_products.delete_many({"productId": {"$in": to_del}})
+    await db.product_mappings.delete_many({"internalProductId": {"$in": to_del}})
+    return {"success": True, "deleted": res.deleted_count}
 
 
 # ========== SUPPLIER PRODUCTS (multi-supplier mapping) ==========
@@ -1853,6 +1897,33 @@ async def export_orders_csv(current=Depends(get_current_user)):
                              headers={"Content-Disposition": "attachment; filename=commandes.csv"})
 
 
+# ========== INTEGRATIONS: DeepSeek AI key ==========
+class DeepSeekKeyPayload(BaseModel):
+    apiKey: str
+
+
+@app.get("/api/integrations/deepseek")
+async def get_deepseek_integration(current=Depends(get_current_user)):
+    doc = await db.app_settings.find_one({"key": "integrations:deepseek"})
+    key = ((doc or {}).get("value") or {}).get("apiKey") or ""
+    preview = (key[:5] + "…" + key[-4:]) if len(key) > 12 else ("•" * len(key))
+    return {"configured": deepseek.is_configured(), "hasKey": bool(key), "keyPreview": preview}
+
+
+@app.put("/api/integrations/deepseek")
+async def set_deepseek_integration(payload: DeepSeekKeyPayload, current=Depends(get_current_user)):
+    if current.get("role") != "admin":
+        raise HTTPException(403, "Réservé à l'administrateur")
+    key = payload.apiKey.strip()
+    await db.app_settings.update_one(
+        {"key": "integrations:deepseek"},
+        {"$set": {"key": "integrations:deepseek", "value": {"apiKey": key}, "updatedAt": utc_now()}},
+        upsert=True,
+    )
+    deepseek.set_api_key(key)
+    return {"success": True, "configured": deepseek.is_configured()}
+
+
 # ========== SETTINGS (multi-devise + TVA) ==========
 DEFAULT_SETTINGS = {
     "currency": "EUR", "currencySymbol": "€", "vatRate": 20.0, "vatIncluded": True,
@@ -1946,5 +2017,8 @@ async def startup():
     await db.supplier_products.create_index([("supplierId", 1), ("productId", 1)])
     await db.orders.create_index("orderNumber")
     await db.orders.create_index("wpOrderId", sparse=True)
+    _ds = await db.app_settings.find_one({"key": "integrations:deepseek"})
+    if _ds and (_ds.get("value") or {}).get("apiKey"):
+        deepseek.set_api_key(_ds["value"]["apiKey"])
     start_scheduler(db)
     print("✓ EuropaDrop API démarrée")
