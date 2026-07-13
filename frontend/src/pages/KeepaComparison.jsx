@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
-import { Card, Loading } from "../components/Bits";
-import { MagnifyingGlass, ArrowsClockwise, TrendUp, TrendDown, Package } from "@phosphor-icons/react";
+import { Card } from "../components/Bits";
+import { MagnifyingGlass, ArrowsClockwise, TrendUp, Package } from "@phosphor-icons/react";
 import api from "../lib/api";
 import { toast } from "sonner";
 import { fmtEUR } from "../lib/format";

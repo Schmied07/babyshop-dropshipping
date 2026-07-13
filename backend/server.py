@@ -35,7 +35,7 @@ from api_keys import (  # noqa: E402
 )
 
 MONGO_URL = os.environ.get("MONGO_URL")
-DB_NAME = os.environ.get("DB_NAME")
+DB_NAME = os.environ.get("DB_NAME", "dropshipping")
 
 client = AsyncIOMotorClient(MONGO_URL)
 db = client[DB_NAME]
