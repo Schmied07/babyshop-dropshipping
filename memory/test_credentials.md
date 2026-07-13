@@ -24,8 +24,7 @@
 - Consumer Secret: cs_e83d03dd16dae8d21c02a1d70089ce87a37d302a
 
 ## DeepSeek AI
-- **Key**: EMPTY (DEEPSEEK_API_KEY not set) — AI endpoints return graceful "non configuré".
-- Bulk AI action returns {success:false, configured:false, message:...} when key missing (by design).
+- **Key**: CONFIGURÉE (fournie par l'utilisateur, dans backend/.env `DEEPSEEK_API_KEY`). Sur le VPS, ajouter la même clé dans le `.env` de production.
 
 ## Notes
 - Le preview pointe vers le **MongoDB Atlas de l'utilisateur** (`europadrop`). Pour tester sans polluer la prod, basculer temporairement `backend/.env` vers `mongodb://localhost:27017` + `DB_NAME=europadrop_sandbox`, `python seed.py`, puis restaurer Atlas.

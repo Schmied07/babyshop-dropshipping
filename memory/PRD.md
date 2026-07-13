@@ -1,4 +1,10 @@
-# EuropaDrop — PRD v1.6
+# EuropaDrop — PRD v1.7
+
+### v1.7 (session 8 — mapping IA à l'import, juillet 2026)
+- **Détection auto des colonnes par IA** (DeepSeek) à l'import : `/api/ai/smart-mapping` (repli heuristique si IA absente) + bouton « Détecter les colonnes (IA) ».
+- **Normalisation des catégories par IA** vers les catégories existantes de l'utilisateur : `/api/catalog/normalize-categories` + table éditable ; `categoryMap` appliqué à l'import.
+- Clé **DeepSeek configurée** → traduction, SEO, actions IA en masse, mapping IA actifs.
+- API **Cogita** reportée (pas d'identifiants). Le mapping IA fonctionne pour Cogita ET tout autre fournisseur.
 
 ## Tech Stack
 ### v1.6 (session 7 — catégories dynamiques + isolation étendue, juillet 2026)

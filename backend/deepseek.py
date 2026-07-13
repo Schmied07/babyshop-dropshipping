@@ -94,6 +94,30 @@ async def generate_seo_description(product_name: str, category: str = "", brand:
         return {"seo_title": product_name, "meta_description": "", "description": raw, "keywords": []}
 
 
+async def normalize_categories(source_categories: List[str], existing_categories: List[str]) -> Dict[str, str]:
+    """Map each supplier category to the closest existing user category (or keep it if none fits)."""
+    if not source_categories:
+        return {}
+    prompt = (
+        f"Tu organises un catalogue e-commerce.\n"
+        f"Catégories existantes de la boutique: {json.dumps(existing_categories, ensure_ascii=False)}\n"
+        f"Catégories du fournisseur à normaliser: {json.dumps(source_categories, ensure_ascii=False)}\n\n"
+        f"Pour CHAQUE catégorie fournisseur, choisis la catégorie existante la plus proche. "
+        f"Si aucune ne correspond, propose un nom de catégorie propre (français, titre court). "
+        f"Renvoie STRICTEMENT un JSON objet: {{\"categorie_fournisseur\": \"categorie_cible\", ...}}"
+    )
+    raw = await chat(
+        [{"role": "user", "content": prompt}],
+        temperature=0.1, max_tokens=800,
+        response_format={"type": "json_object"},
+    )
+    try:
+        data = json.loads(raw)
+        return {str(k): str(v) for k, v in data.items() if v}
+    except json.JSONDecodeError:
+        return {c: c for c in source_categories}
+
+
 async def smart_column_mapping(columns: List[str], sample_rows: List[Dict[str, Any]]) -> Dict[str, str]:
     """Suggest intelligent mapping using DeepSeek."""
     internal_fields = {

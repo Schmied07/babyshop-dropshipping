@@ -3,7 +3,7 @@ import { toast } from "sonner";
 import api from "../lib/api";
 import { PageHeader, Card, Loading, StatusBadge } from "../components/Bits";
 import { fmtDate } from "../lib/format";
-import { DownloadSimple, UploadSimple, ArrowRight, CheckCircle, XCircle, Files } from "@phosphor-icons/react";
+import { DownloadSimple, UploadSimple, ArrowRight, CheckCircle, XCircle, Files, Sparkle, Robot } from "@phosphor-icons/react";
 
 const INTERNAL_FIELDS = [
   { key: "supplierSku", label: "SKU fournisseur *", required: true },
@@ -28,6 +28,41 @@ export default function ImportCatalog() {
   const [result, setResult] = useState(null);
   const [history, setHistory] = useState([]);
   const [busy, setBusy] = useState(false);
+  const [categoryMap, setCategoryMap] = useState({});
+  const [catRows, setCatRows] = useState([]);
+
+  const aiDetect = async () => {
+    setBusy(true);
+    try {
+      const r = await api.post("/ai/smart-mapping", { columns: preview.columns, sample_rows: preview.preview_rows });
+      setMapping({ ...mapping, ...(r.data.mapping || {}) });
+      if (r.data.configured) toast.success("Colonnes détectées par l'IA");
+      else toast(r.data.message || "Détection heuristique appliquée");
+    } catch (e) {
+      toast.error("Erreur détection IA");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const normalizeCats = async () => {
+    const col = mapping.category;
+    if (!col) { toast.error("Mappez d'abord la colonne Catégorie"); return; }
+    const distinct = [...new Set(preview.preview_rows.map((r) => r[col]).filter(Boolean).map(String))];
+    if (distinct.length === 0) { toast.error("Aucune catégorie dans l'aperçu"); return; }
+    setBusy(true);
+    try {
+      const r = await api.post("/catalog/normalize-categories", { categories: distinct });
+      setCategoryMap(r.data.map || {});
+      setCatRows(Object.entries(r.data.map || {}).map(([source, target]) => ({ source, target })));
+      if (r.data.configured) toast.success("Catégories normalisées par l'IA");
+      else toast(r.data.message || "Correspondance exacte appliquée");
+    } catch (e) {
+      toast.error("Erreur normalisation");
+    } finally {
+      setBusy(false);
+    }
+  };
 
   useEffect(() => {
     api.get("/suppliers").then((r) => setSuppliers(r.data.data || []));
@@ -72,6 +107,7 @@ export default function ImportCatalog() {
       fd2.append("file", file);
       fd2.append("supplierId", supplierId);
       fd2.append("mapping", JSON.stringify(mapping));
+      fd2.append("categoryMap", JSON.stringify(categoryMap));
       const r = await api.post("/catalog/import-file", fd2, { headers: { "Content-Type": "multipart/form-data" } });
       setResult(r.data);
       setStep(4);
@@ -86,6 +122,7 @@ export default function ImportCatalog() {
 
   const reset = () => {
     setStep(1); setFile(null); setPreview(null); setMapping({}); setResult(null);
+    setCategoryMap({}); setCatRows([]);
   };
 
   return (
@@ -149,6 +186,16 @@ export default function ImportCatalog() {
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
           <Card title="Mapper les colonnes">
             <div className="p-4 space-y-3 max-h-[500px] overflow-y-auto">
+              <div className="flex gap-2 pb-3 border-b border-border">
+                <button className="btn btn-primary text-[12px]" onClick={aiDetect} disabled={busy} data-testid="ai-detect-btn">
+                  <Sparkle size={14} weight="bold" /> Détecter les colonnes (IA)
+                </button>
+                {mapping.category && (
+                  <button className="btn btn-secondary text-[12px]" onClick={normalizeCats} disabled={busy} data-testid="ai-normalize-btn">
+                    <Robot size={14} weight="bold" /> Normaliser catégories
+                  </button>
+                )}
+              </div>
               {INTERNAL_FIELDS.map((f) => (
                 <div key={f.key} className="flex items-center gap-3">
                   <div className="flex-1">
@@ -167,6 +214,29 @@ export default function ImportCatalog() {
                   </select>
                 </div>
               ))}
+              {catRows.length > 0 && (
+                <div className="pt-3 border-t border-border">
+                  <div className="text-[10px] uppercase tracking-widest text-muted-foreground font-bold mb-2">
+                    Catégories normalisées (éditable)
+                  </div>
+                  {catRows.map((cr, i) => (
+                    <div key={i} className="flex items-center gap-2 mb-1">
+                      <span className="text-[12px] flex-1 truncate" title={cr.source}>{cr.source}</span>
+                      <ArrowRight size={12} className="text-muted-foreground" />
+                      <input
+                        className="input w-40 text-[12px]"
+                        value={cr.target}
+                        onChange={(e) => {
+                          const next = catRows.map((x, idx) => idx === i ? { ...x, target: e.target.value } : x);
+                          setCatRows(next);
+                          setCategoryMap(Object.fromEntries(next.map((x) => [x.source, x.target])));
+                        }}
+                        data-testid={`catmap-${i}`}
+                      />
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           </Card>
 

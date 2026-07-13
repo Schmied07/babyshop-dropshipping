@@ -628,11 +628,12 @@ async def catalog_import(payload: CatalogImportPayload, current=Depends(get_curr
     return await _do_catalog_import(payload, owner)
 
 
-async def _do_catalog_import(payload: CatalogImportPayload, owner_id: Optional[str] = None):
+async def _do_catalog_import(payload: CatalogImportPayload, owner_id: Optional[str] = None, category_map: Optional[dict] = None):
     """Import rows for a supplier. Creates products if missing, updates supplier_products."""
     supplier = await db.suppliers.find_one({"_id": oid(payload.supplierId)})
     if not supplier:
         raise HTTPException(404, "Fournisseur non trouvé")
+    category_map = category_map or {}
 
     imported, updated, errors = 0, 0, []
     affected_products: set = set()
@@ -644,6 +645,8 @@ async def _do_catalog_import(payload: CatalogImportPayload, owner_id: Optional[s
             cost = float(row.get("costPrice", 0))
             stock = int(row.get("stock", 0))
             category = row.get("category") or None
+            if category and category_map:
+                category = category_map.get(category, category)
             brand = row.get("brand") or None
 
             # find or create product by SKU heuristic (using supplierSku or brand+name)
@@ -706,6 +709,7 @@ async def catalog_import_file(
     file: UploadFile = File(...),
     supplierId: str = Form(...),
     mapping: str = Form(...),
+    categoryMap: Optional[str] = Form(None),
     current=Depends(get_current_user),
 ):
     """Import full catalog file directly (parses server-side)."""
@@ -722,6 +726,7 @@ async def catalog_import_file(
     try:
         rows = parse_catalog(content, fmt)
         mapping_dict = _json.loads(mapping)
+        cat_map = _json.loads(categoryMap) if categoryMap else {}
     except Exception as e:
         raise HTTPException(400, f"Erreur: {e}")
 
@@ -730,7 +735,7 @@ async def catalog_import_file(
         mapping=mapping_dict, rows=rows,
     )
     owner = current.get("id") if current.get("role") not in ("admin", "api_key") else None
-    return await _do_catalog_import(payload, owner)
+    return await _do_catalog_import(payload, owner, cat_map)
 
 
 @app.get("/api/catalog/history")
@@ -1163,13 +1168,41 @@ class SmartMapPayload(BaseModel):
 
 @app.post("/api/ai/smart-mapping")
 async def ai_smart_mapping(payload: SmartMapPayload, _=Depends(get_current_user)):
+    # Graceful: if AI not configured, fall back to the heuristic auto-mapping.
     if not deepseek.is_configured():
-        raise HTTPException(400, "DeepSeek non configuré")
+        return {"success": True, "configured": False, "mapping": auto_suggest_mapping(payload.columns),
+                "message": "IA (DeepSeek) non configurée — détection heuristique utilisée."}
     try:
         mapping = await deepseek.smart_column_mapping(payload.columns, payload.sample_rows)
-        return {"success": True, "mapping": mapping}
-    except Exception as e:
-        raise HTTPException(500, str(e))
+        # merge with heuristic to fill gaps
+        base = auto_suggest_mapping(payload.columns)
+        base.update({k: v for k, v in mapping.items() if v})
+        return {"success": True, "configured": True, "mapping": base}
+    except Exception:
+        return {"success": True, "configured": False, "mapping": auto_suggest_mapping(payload.columns),
+                "message": "Erreur IA — détection heuristique utilisée."}
+
+
+class NormalizeCatPayload(BaseModel):
+    categories: List[str]
+
+
+@app.post("/api/catalog/normalize-categories")
+async def normalize_categories_ep(payload: NormalizeCatPayload, current=Depends(get_current_user)):
+    existing = sorted([c for c in await db.products.distinct("category", scope_q(current)) if c])
+    src = sorted(set([c for c in payload.categories if c]))
+    if not src:
+        return {"success": True, "configured": deepseek.is_configured(), "map": {}, "existing": existing}
+    if not deepseek.is_configured():
+        low = {e.lower(): e for e in existing}
+        return {"success": True, "configured": False,
+                "map": {c: low.get(c.lower(), c) for c in src}, "existing": existing,
+                "message": "IA non configurée — correspondance exacte uniquement."}
+    try:
+        mapping = await deepseek.normalize_categories(src, existing)
+    except Exception:
+        mapping = {c: c for c in src}
+    return {"success": True, "configured": True, "map": mapping, "existing": existing}
 
 
 class BulkTranslatePayload(BaseModel):
