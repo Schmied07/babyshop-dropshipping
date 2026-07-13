@@ -61,7 +61,7 @@ export default function Settings() {
   };
 
   const deleteKeepa = async () => {
-    if (!confirm("Supprimer la clé Keepa ?")) return;
+    if (!window.confirm("Supprimer la clé Keepa ?")) return;
     try {
       await api.delete("/integrations/keepa");
       setKeepa({ configured: false, marketplaces: [] });
