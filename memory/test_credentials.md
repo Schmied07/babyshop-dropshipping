@@ -4,10 +4,11 @@
 - **Email**: admin@creook.fr  (mot de passe géré par l'utilisateur, inconnu de l'agent)
 
 ## QA Tester (Atlas prod DB `europadrop` — created for frontend testing, isolated operator)
-- **Email**: qa.tester@europadrop.test
+- **Email**: qa.tester@europadrop-qa.fr
 - **Password**: QaTest1234!
 - **Role**: operator (isolated — voit uniquement ses ~12 produits jetables "QA Produit N", catégorie "QA Test")
 - Seedé avec 12 produits jetables pour tester la suppression individuelle et groupée. Supprimable sans impact sur les vraies données.
+- NB: éviter les TLD réservées (.test/.example/.invalid/.localhost) — rejetées par EmailStr (pydantic).
 
 ## Operator réel (Atlas)
 - **Email**: thierry@gmail.com (mot de passe géré par l'utilisateur, inconnu de l'agent)
