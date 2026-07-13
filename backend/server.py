@@ -224,12 +224,14 @@ async def refresh_product_aggregates(product_id: str):
         return
     best_cost = min(sp["costPrice"] for sp in sps)
     total_stock = sum(sp.get("stock", 0) for sp in sps)
-    rules = await load_active_pricing_rules(prod.get("ownerId"))
-    rule = find_best_rule(rules, prod.get("category"), None)
-    retail = compute_retail_price(best_cost, rule)
+    updates = {"costPrice": best_cost, "stock": total_stock}
+    if not prod.get("priceLocked"):
+        rules = await load_active_pricing_rules(prod.get("ownerId"))
+        rule = find_best_rule(rules, prod.get("category"), None)
+        updates["retailPrice"] = compute_retail_price(best_cost, rule)
     await db.products.update_one(
         {"_id": oid(product_id)},
-        {"$set": {"costPrice": best_cost, "stock": total_stock, "retailPrice": retail}},
+        {"$set": updates},
     )
     # Low stock notif
     if total_stock < 10:

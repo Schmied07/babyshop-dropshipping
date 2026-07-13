@@ -671,6 +671,7 @@ function ProductFormModal({ product, categories = [], onClose, onSaved }) {
     retailPrice: product?.retailPrice ?? 0,
     stock: product?.stock ?? 0,
     isActive: product?.isActive ?? true,
+    priceLocked: product?.priceLocked ?? (Number(product?.retailPrice) > 0),
   });
   const [saving, setSaving] = useState(false);
   const set = (k, v) => setForm({ ...form, [k]: v });
@@ -686,6 +687,7 @@ function ProductFormModal({ product, categories = [], onClose, onSaved }) {
       retailPrice: Number(form.retailPrice) || 0,
       stock: Number(form.stock) || 0,
       isActive: form.isActive,
+      priceLocked: form.priceLocked,
     };
     try {
       if (isEdit) {
@@ -747,7 +749,7 @@ function ProductFormModal({ product, categories = [], onClose, onSaved }) {
             </div>
             <div>
               <label className="label">Prix de vente (€)</label>
-              <input type="number" step="0.01" className="input input-mono" value={form.retailPrice} onChange={(e) => set("retailPrice", e.target.value)} data-testid="product-price" />
+              <input type="number" step="0.01" className="input input-mono" value={form.retailPrice} onChange={(e) => setForm({ ...form, retailPrice: e.target.value, priceLocked: true })} data-testid="product-price" />
             </div>
             <div>
               <label className="label">Stock</label>
@@ -761,6 +763,10 @@ function ProductFormModal({ product, categories = [], onClose, onSaved }) {
           <label className="flex items-center gap-2 text-sm">
             <input type="checkbox" checked={form.isActive} onChange={(e) => set("isActive", e.target.checked)} />
             Produit actif
+          </label>
+          <label className="flex items-center gap-2 text-sm" data-testid="product-price-locked-label">
+            <input type="checkbox" checked={form.priceLocked} onChange={(e) => set("priceLocked", e.target.checked)} data-testid="product-price-locked" />
+            Verrouiller ce prix (ignorer le pricing automatique)
           </label>
           {isEdit && <div className="text-[11px] text-muted-foreground">Astuce : le prix est recalculé par les règles si des fournisseurs sont mappés (onglet Détails).</div>}
         </div>

@@ -119,6 +119,7 @@ class Product(BaseDocument):
     # aggregated
     costPrice: float = 0  # best supplier cost
     retailPrice: float = 0  # computed from pricing rule
+    priceLocked: bool = False  # if True, retailPrice is manual and never auto-recomputed
     stock: int = 0
     createdAt: datetime = Field(default_factory=utc_now)
 
