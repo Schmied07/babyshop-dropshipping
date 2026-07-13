@@ -1,9 +1,9 @@
 import { useState, useEffect } from "react";
-import { Card, Button, Select, Badge } from "../components/Bits";
+import { Card, Loading } from "../components/Bits";
 import { MagnifyingGlass, ArrowsClockwise, TrendUp, TrendDown, Package } from "@phosphor-icons/react";
 import api from "../lib/api";
 import { toast } from "sonner";
-import { formatCurrency } from "../lib/format";
+import { fmtEUR } from "../lib/format";
 
 const EU_MARKETPLACES = [
   { value: "amazon.fr", label: "🇫🇷 France (amazon.fr)" },
@@ -112,9 +112,10 @@ export default function KeepaComparison() {
             <label className="block text-xs font-medium text-zinc-400 mb-2">
               Fournisseur
             </label>
-            <Select
+            <select
               value={selectedSupplier}
               onChange={(e) => setSelectedSupplier(e.target.value)}
+              className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded text-white text-sm"
               data-testid="supplier-select"
             >
               <option value="">-- Sélectionner --</option>
@@ -123,16 +124,17 @@ export default function KeepaComparison() {
                   {s.name}
                 </option>
               ))}
-            </Select>
+            </select>
           </div>
 
           <div>
             <label className="block text-xs font-medium text-zinc-400 mb-2">
               Marketplace Amazon
             </label>
-            <Select
+            <select
               value={selectedMarketplace}
               onChange={(e) => setSelectedMarketplace(e.target.value)}
+              className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded text-white text-sm"
               data-testid="marketplace-select"
             >
               {EU_MARKETPLACES.map((m) => (
@@ -140,7 +142,7 @@ export default function KeepaComparison() {
                   {m.label}
                 </option>
               ))}
-            </Select>
+            </select>
           </div>
 
           <div>
@@ -159,10 +161,10 @@ export default function KeepaComparison() {
           </div>
 
           <div className="flex items-end">
-            <Button
+            <button
               onClick={handleCompare}
               disabled={loading || !selectedSupplier}
-              className="w-full"
+              className="w-full px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-zinc-700 disabled:cursor-not-allowed text-white rounded text-sm font-medium flex items-center justify-center gap-2"
               data-testid="compare-btn"
             >
               {loading ? (
@@ -176,7 +178,7 @@ export default function KeepaComparison() {
                   Comparer
                 </>
               )}
-            </Button>
+            </button>
           </div>
         </div>
 
@@ -223,13 +225,12 @@ export default function KeepaComparison() {
               </div>
 
               <div className="flex items-end">
-                <Button
+                <button
                   onClick={() => setFilters({ minMarginPct: "", minMarginEur: "", hasStock: false })}
-                  variant="ghost"
-                  className="w-full"
+                  className="w-full px-4 py-2 bg-zinc-800 hover:bg-zinc-700 text-white rounded text-sm"
                 >
                   Réinitialiser filtres
-                </Button>
+                </button>
               </div>
             </div>
           </div>
@@ -326,13 +327,13 @@ export default function KeepaComparison() {
                     </td>
                     <td className="p-3 text-zinc-400 text-xs font-mono">{item.ean}</td>
                     <td className="p-3 text-right text-white font-medium">
-                      {formatCurrency(item.supplier_price)}
+                      {fmtEUR(item.supplier_price)}
                     </td>
                     <td className="p-3 text-right text-white font-medium">
-                      {item.amazon_price ? formatCurrency(item.amazon_price) : "-"}
+                      {item.amazon_price ? fmtEUR(item.amazon_price) : "-"}
                     </td>
                     <td className="p-3 text-right text-white font-medium">
-                      {item.buybox_price ? formatCurrency(item.buybox_price) : "-"}
+                      {item.buybox_price ? fmtEUR(item.buybox_price) : "-"}
                     </td>
                     <td className="p-3 text-right text-zinc-400">
                       {item.sales_rank ? `#${item.sales_rank.toLocaleString()}` : "-"}
@@ -340,7 +341,7 @@ export default function KeepaComparison() {
                     <td className="p-3 text-right">
                       {item.margin_eur !== null ? (
                         <span className={marginPositive ? "text-green-400 font-semibold" : "text-red-400 font-semibold"}>
-                          {marginPositive && "+"}{formatCurrency(item.margin_eur)}
+                          {marginPositive && "+"}{fmtEUR(item.margin_eur)}
                         </span>
                       ) : (
                         "-"
@@ -348,18 +349,26 @@ export default function KeepaComparison() {
                     </td>
                     <td className="p-3 text-right">
                       {item.margin_pct !== null ? (
-                        <Badge variant={marginPositive ? "success" : "error"}>
+                        <span className={`inline-flex items-center px-2 py-1 rounded text-xs font-semibold ${
+                          marginPositive 
+                            ? "bg-green-500/20 text-green-400 border border-green-500/30" 
+                            : "bg-red-500/20 text-red-400 border border-red-500/30"
+                        }`}>
                           {marginPositive && "+"}{item.margin_pct.toFixed(1)}%
-                        </Badge>
+                        </span>
                       ) : (
                         "-"
                       )}
                     </td>
                     <td className="p-3 text-center text-zinc-400">{item.offer_count || 0}</td>
                     <td className="p-3 text-center">
-                      <Badge variant={item.stock > 0 ? "success" : "error"}>
+                      <span className={`inline-flex items-center px-2 py-1 rounded text-xs font-semibold ${
+                        item.stock > 0
+                          ? "bg-green-500/20 text-green-400 border border-green-500/30"
+                          : "bg-red-500/20 text-red-400 border border-red-500/30"
+                      }`}>
                         {item.stock}
-                      </Badge>
+                      </span>
                     </td>
                   </tr>
                 );
