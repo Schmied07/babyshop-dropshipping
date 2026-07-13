@@ -35,7 +35,7 @@ export default function KeepaComparison() {
 
   // Load suppliers
   useEffect(() => {
-    api.get("/suppliers").then((r) => setSuppliers(r.data));
+    api.get("/suppliers").then((r) => setSuppliers(r.data.data || []));
   }, []);
 
   const handleCompare = async () => {
