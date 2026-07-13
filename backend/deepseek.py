@@ -1,4 +1,10 @@
-"""DeepSeek client (OpenAI-compatible API)."""
+"""DeepSeek client (OpenAI-compatible API).
+
+Supports two levels of key resolution:
+  1. Explicit ``api_key`` argument passed to each helper (per-user key, from DB).
+  2. Global fallback: runtime key set via ``set_api_key`` (from admin/global settings),
+     otherwise ``DEEPSEEK_API_KEY`` from the environment.
+"""
 import os
 import json
 import re
@@ -8,7 +14,7 @@ import httpx
 DEEPSEEK_API_KEY = os.environ.get("DEEPSEEK_API_KEY", "")
 DEEPSEEK_BASE_URL = os.environ.get("DEEPSEEK_BASE_URL", "https://api.deepseek.com/v1")
 
-# Runtime key set from app settings (UI) takes priority over the .env value.
+# Runtime key set from app settings (admin/global) takes priority over the .env value.
 _runtime_key: Optional[str] = None
 
 
@@ -18,11 +24,19 @@ def set_api_key(key: Optional[str]) -> None:
 
 
 def current_key() -> str:
+    """Global/admin fallback key."""
     return _runtime_key or DEEPSEEK_API_KEY
 
 
-def is_configured() -> bool:
-    return bool(current_key())
+def resolve_key(explicit: Optional[str] = None) -> str:
+    """Return the effective key for this call: explicit -> runtime -> env."""
+    if explicit and str(explicit).strip():
+        return str(explicit).strip()
+    return current_key()
+
+
+def is_configured(explicit: Optional[str] = None) -> bool:
+    return bool(resolve_key(explicit))
 
 
 async def chat(
@@ -31,10 +45,11 @@ async def chat(
     temperature: float = 0.3,
     max_tokens: int = 1024,
     response_format: Optional[Dict[str, Any]] = None,
+    api_key: Optional[str] = None,
 ) -> str:
-    if not is_configured():
+    key = resolve_key(api_key)
+    if not key:
         raise RuntimeError("DEEPSEEK_API_KEY manquant")
-    api_key = current_key()
     payload: Dict[str, Any] = {
         "model": model,
         "messages": messages,
@@ -47,7 +62,7 @@ async def chat(
         r = await client.post(
             f"{DEEPSEEK_BASE_URL}/chat/completions",
             headers={
-                "Authorization": f"Bearer {api_key}",
+                "Authorization": f"Bearer {key}",
                 "Content-Type": "application/json",
             },
             json=payload,
@@ -58,7 +73,7 @@ async def chat(
         return data["choices"][0]["message"]["content"]
 
 
-async def translate_to_french(text: str, source_lang: str = "auto") -> str:
+async def translate_to_french(text: str, source_lang: str = "auto", api_key: Optional[str] = None) -> str:
     """Translate any EN/ES/IT text to French."""
     if not text or not text.strip():
         return text
@@ -70,11 +85,14 @@ async def translate_to_french(text: str, source_lang: str = "auto") -> str:
     )
     return (await chat(
         [{"role": "user", "content": prompt}],
-        temperature=0.2, max_tokens=800,
+        temperature=0.2, max_tokens=800, api_key=api_key,
     )).strip()
 
 
-async def generate_seo_description(product_name: str, category: str = "", brand: str = "", features: str = "") -> Dict[str, str]:
+async def generate_seo_description(
+    product_name: str, category: str = "", brand: str = "", features: str = "",
+    api_key: Optional[str] = None,
+) -> Dict[str, str]:
     """Generate SEO title + meta description + long description for a product."""
     prompt = (
         f"Tu es un expert SEO e-commerce français spécialisé produits bébé/puériculture.\n"
@@ -93,11 +111,11 @@ async def generate_seo_description(product_name: str, category: str = "", brand:
         [{"role": "user", "content": prompt}],
         temperature=0.6, max_tokens=1200,
         response_format={"type": "json_object"},
+        api_key=api_key,
     )
     try:
         return json.loads(raw)
     except json.JSONDecodeError:
-        # Fallback: try to extract JSON block
         m = re.search(r"\{.*\}", raw, re.DOTALL)
         if m:
             try:
@@ -107,7 +125,9 @@ async def generate_seo_description(product_name: str, category: str = "", brand:
         return {"seo_title": product_name, "meta_description": "", "description": raw, "keywords": []}
 
 
-async def normalize_categories(source_categories: List[str], existing_categories: List[str]) -> Dict[str, str]:
+async def normalize_categories(
+    source_categories: List[str], existing_categories: List[str], api_key: Optional[str] = None,
+) -> Dict[str, str]:
     """Map each supplier category to the closest existing user category (or keep it if none fits)."""
     if not source_categories:
         return {}
@@ -123,6 +143,7 @@ async def normalize_categories(source_categories: List[str], existing_categories
         [{"role": "user", "content": prompt}],
         temperature=0.1, max_tokens=800,
         response_format={"type": "json_object"},
+        api_key=api_key,
     )
     try:
         data = json.loads(raw)
@@ -131,7 +152,9 @@ async def normalize_categories(source_categories: List[str], existing_categories
         return {c: c for c in source_categories}
 
 
-async def smart_column_mapping(columns: List[str], sample_rows: List[Dict[str, Any]]) -> Dict[str, str]:
+async def smart_column_mapping(
+    columns: List[str], sample_rows: List[Dict[str, Any]], api_key: Optional[str] = None,
+) -> Dict[str, str]:
     """Suggest intelligent mapping using DeepSeek."""
     internal_fields = {
         "supplierSku": "SKU / référence fournisseur du produit",
@@ -157,6 +180,7 @@ async def smart_column_mapping(columns: List[str], sample_rows: List[Dict[str, A
         [{"role": "user", "content": prompt}],
         temperature=0.1, max_tokens=600,
         response_format={"type": "json_object"},
+        api_key=api_key,
     )
     try:
         data = json.loads(raw)

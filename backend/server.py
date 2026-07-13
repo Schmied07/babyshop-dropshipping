@@ -1164,11 +1164,12 @@ class TranslatePayload(BaseModel):
 
 
 @app.post("/api/ai/translate")
-async def ai_translate(payload: TranslatePayload, _=Depends(get_current_user)):
-    if not deepseek.is_configured():
+async def ai_translate(payload: TranslatePayload, current=Depends(get_current_user)):
+    ds_key = await get_user_deepseek_key(current)
+    if not ds_key:
         raise HTTPException(400, "DeepSeek non configuré")
     try:
-        translated = await deepseek.translate_to_french(payload.text, payload.source_lang)
+        translated = await deepseek.translate_to_french(payload.text, payload.source_lang, api_key=ds_key)
         return {"success": True, "translated": translated}
     except Exception as e:
         raise HTTPException(500, str(e))
@@ -1183,12 +1184,13 @@ class SEOPayload(BaseModel):
 
 
 @app.post("/api/ai/seo-description")
-async def ai_seo(payload: SEOPayload, _=Depends(get_current_user)):
-    if not deepseek.is_configured():
+async def ai_seo(payload: SEOPayload, current=Depends(get_current_user)):
+    ds_key = await get_user_deepseek_key(current)
+    if not ds_key:
         raise HTTPException(400, "DeepSeek non configuré")
     try:
         result = await deepseek.generate_seo_description(
-            payload.name, payload.category, payload.brand, payload.features
+            payload.name, payload.category, payload.brand, payload.features, api_key=ds_key,
         )
         if payload.productId:
             await db.products.update_one(
@@ -1211,13 +1213,14 @@ class SmartMapPayload(BaseModel):
 
 
 @app.post("/api/ai/smart-mapping")
-async def ai_smart_mapping(payload: SmartMapPayload, _=Depends(get_current_user)):
+async def ai_smart_mapping(payload: SmartMapPayload, current=Depends(get_current_user)):
     # Graceful: if AI not configured, fall back to the heuristic auto-mapping.
-    if not deepseek.is_configured():
+    ds_key = await get_user_deepseek_key(current)
+    if not ds_key:
         return {"success": True, "configured": False, "mapping": auto_suggest_mapping(payload.columns),
                 "message": "IA (DeepSeek) non configurée — détection heuristique utilisée."}
     try:
-        mapping = await deepseek.smart_column_mapping(payload.columns, payload.sample_rows)
+        mapping = await deepseek.smart_column_mapping(payload.columns, payload.sample_rows, api_key=ds_key)
         # merge with heuristic to fill gaps
         base = auto_suggest_mapping(payload.columns)
         base.update({k: v for k, v in mapping.items() if v})
@@ -1235,15 +1238,16 @@ class NormalizeCatPayload(BaseModel):
 async def normalize_categories_ep(payload: NormalizeCatPayload, current=Depends(get_current_user)):
     existing = sorted([c for c in await db.products.distinct("category", scope_q(current)) if c])
     src = sorted(set([c for c in payload.categories if c]))
+    ds_key = await get_user_deepseek_key(current)
     if not src:
-        return {"success": True, "configured": deepseek.is_configured(), "map": {}, "existing": existing}
-    if not deepseek.is_configured():
+        return {"success": True, "configured": bool(ds_key), "map": {}, "existing": existing}
+    if not ds_key:
         low = {e.lower(): e for e in existing}
         return {"success": True, "configured": False,
                 "map": {c: low.get(c.lower(), c) for c in src}, "existing": existing,
                 "message": "IA non configurée — correspondance exacte uniquement."}
     try:
-        mapping = await deepseek.normalize_categories(src, existing)
+        mapping = await deepseek.normalize_categories(src, existing, api_key=ds_key)
     except Exception:
         mapping = {c: c for c in src}
     return {"success": True, "configured": True, "map": mapping, "existing": existing}
@@ -1254,8 +1258,9 @@ class BulkTranslatePayload(BaseModel):
 
 
 @app.post("/api/ai/bulk-translate-products")
-async def ai_bulk_translate(payload: BulkTranslatePayload, _=Depends(get_current_user)):
-    if not deepseek.is_configured():
+async def ai_bulk_translate(payload: BulkTranslatePayload, current=Depends(get_current_user)):
+    ds_key = await get_user_deepseek_key(current)
+    if not ds_key:
         raise HTTPException(400, "DeepSeek non configuré")
     updated = 0
     errors = []
@@ -1264,8 +1269,8 @@ async def ai_bulk_translate(payload: BulkTranslatePayload, _=Depends(get_current
             prod = await db.products.find_one({"_id": oid(pid)})
             if not prod:
                 continue
-            new_name = await deepseek.translate_to_french(prod.get("name", ""))
-            new_desc = await deepseek.translate_to_french(prod.get("description", "")) if prod.get("description") else ""
+            new_name = await deepseek.translate_to_french(prod.get("name", ""), api_key=ds_key)
+            new_desc = await deepseek.translate_to_french(prod.get("description", ""), api_key=ds_key) if prod.get("description") else ""
             await db.products.update_one(
                 {"_id": oid(pid)},
                 {"$set": {"name": new_name, "description": new_desc}},
@@ -1794,10 +1799,11 @@ class BulkAIPayload(BaseModel):
 
 @app.post("/api/ai/bulk-action")
 async def ai_bulk_action(payload: BulkAIPayload, current=Depends(get_current_user)):
-    if not deepseek.is_configured():
+    ds_key = await get_user_deepseek_key(current)
+    if not ds_key:
         return {
             "success": False, "configured": False, "updated": 0, "results": [],
-            "message": "Clé IA (DeepSeek) non configurée. Renseignez DEEPSEEK_API_KEY pour activer les actions IA en masse.",
+            "message": "Clé IA (DeepSeek) non configurée. Renseignez votre clé DeepSeek dans Réglages pour activer les actions IA en masse.",
         }
     q = scope_q(current)
     results, updated = [], 0
@@ -1809,12 +1815,14 @@ async def ai_bulk_action(payload: BulkAIPayload, current=Depends(get_current_use
                 continue
             update = {}
             if payload.action in ("translate", "both"):
-                update["name"] = await deepseek.translate_to_french(prod.get("name", ""))
+                update["name"] = await deepseek.translate_to_french(prod.get("name", ""), api_key=ds_key)
                 if prod.get("description"):
-                    update["description"] = await deepseek.translate_to_french(prod.get("description", ""))
+                    update["description"] = await deepseek.translate_to_french(prod.get("description", ""), api_key=ds_key)
             if payload.action in ("seo", "both"):
                 seo = await deepseek.generate_seo_description(
-                    prod.get("name", ""), prod.get("category", "") or "", prod.get("brand", "") or "")
+                    prod.get("name", ""), prod.get("category", "") or "", prod.get("brand", "") or "",
+                    api_key=ds_key,
+                )
                 update["seoTitle"] = seo.get("seo_title")
                 update["metaDescription"] = seo.get("meta_description")
                 update["description"] = seo.get("description")
@@ -1902,26 +1910,77 @@ class DeepSeekKeyPayload(BaseModel):
     apiKey: str
 
 
+def _deepseek_settings_key(current: dict) -> str:
+    """Admin => global key shared with the workspace; anyone else => own personal key."""
+    if current.get("role") == "admin":
+        return "integrations:deepseek"
+    uid = current.get("id") or "anon"
+    return f"integrations:deepseek:{uid}"
+
+
+async def get_user_deepseek_key(current: dict) -> str:
+    """Effective DeepSeek key for this principal: user's own key, then global/admin, then env."""
+    if current.get("id") and current.get("role") != "admin":
+        doc = await db.app_settings.find_one({"key": f"integrations:deepseek:{current['id']}"})
+        k = ((doc or {}).get("value") or {}).get("apiKey")
+        if k:
+            return k
+    doc = await db.app_settings.find_one({"key": "integrations:deepseek"})
+    k = ((doc or {}).get("value") or {}).get("apiKey")
+    return k or deepseek.current_key() or ""
+
+
 @app.get("/api/integrations/deepseek")
 async def get_deepseek_integration(current=Depends(get_current_user)):
-    doc = await db.app_settings.find_one({"key": "integrations:deepseek"})
-    key = ((doc or {}).get("value") or {}).get("apiKey") or ""
+    own_doc = None
+    if current.get("id") and current.get("role") != "admin":
+        own_doc = await db.app_settings.find_one({"key": f"integrations:deepseek:{current['id']}"})
+    own_key = ((own_doc or {}).get("value") or {}).get("apiKey") or ""
+
+    global_doc = await db.app_settings.find_one({"key": "integrations:deepseek"})
+    global_key = ((global_doc or {}).get("value") or {}).get("apiKey") or ""
+
+    if current.get("role") == "admin":
+        key = global_key
+        source = "global"
+    else:
+        key = own_key or global_key
+        source = "personal" if own_key else ("global" if global_key else "none")
+
     preview = (key[:5] + "…" + key[-4:]) if len(key) > 12 else ("•" * len(key))
-    return {"configured": deepseek.is_configured(), "hasKey": bool(key), "keyPreview": preview}
+    return {
+        "configured": bool(key),
+        "hasKey": bool(key),
+        "keyPreview": preview,
+        "source": source,
+        "hasPersonalKey": bool(own_key),
+        "hasGlobalKey": bool(global_key),
+    }
 
 
 @app.put("/api/integrations/deepseek")
 async def set_deepseek_integration(payload: DeepSeekKeyPayload, current=Depends(get_current_user)):
-    if current.get("role") != "admin":
-        raise HTTPException(403, "Réservé à l'administrateur")
     key = payload.apiKey.strip()
+    settings_key = _deepseek_settings_key(current)
     await db.app_settings.update_one(
-        {"key": "integrations:deepseek"},
-        {"$set": {"key": "integrations:deepseek", "value": {"apiKey": key}, "updatedAt": utc_now()}},
+        {"key": settings_key},
+        {"$set": {"key": settings_key, "value": {"apiKey": key}, "updatedAt": utc_now()}},
         upsert=True,
     )
-    deepseek.set_api_key(key)
-    return {"success": True, "configured": deepseek.is_configured()}
+    # Refresh the global runtime cache only when admin updates the shared key
+    if current.get("role") == "admin":
+        deepseek.set_api_key(key)
+    return {"success": True, "configured": bool(key), "scope": "global" if current.get("role") == "admin" else "personal"}
+
+
+@app.delete("/api/integrations/deepseek")
+async def delete_deepseek_integration(current=Depends(get_current_user)):
+    """Remove your own DeepSeek key (personal or global depending on role)."""
+    settings_key = _deepseek_settings_key(current)
+    await db.app_settings.delete_one({"key": settings_key})
+    if current.get("role") == "admin":
+        deepseek.set_api_key(None)
+    return {"success": True}
 
 
 # ========== SETTINGS (multi-devise + TVA) ==========
