@@ -17,6 +17,7 @@ import Stores from "./pages/Stores";
 import Users from "./pages/Users";
 import Settings from "./pages/Settings";
 import PriceWatch from "./pages/PriceWatch";
+import KeepaComparison from "./pages/KeepaComparison";
 
 function PrivateRoute({ children }) {
   const { user, loading } = useAuth();
@@ -50,6 +51,7 @@ export default function App() {
           <Route path="/utilisateurs" element={<PrivateRoute><Users /></PrivateRoute>} />
           <Route path="/reglages" element={<PrivateRoute><Settings /></PrivateRoute>} />
           <Route path="/veille-prix" element={<PrivateRoute><PriceWatch /></PrivateRoute>} />
+          <Route path="/comparaison-keepa" element={<PrivateRoute><KeepaComparison /></PrivateRoute>} />
           <Route path="/notifications" element={<PrivateRoute><Notifications /></PrivateRoute>} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>

@@ -27,6 +27,7 @@ from pricing import compute_retail_price, find_best_rule, auto_select_supplier  
 from catalog_import import parse_catalog, detect_columns, auto_suggest_mapping, coerce_row  # noqa: E402
 import woocommerce as wc  # noqa: E402
 import deepseek  # noqa: E402
+import keepa_client  # noqa: E402
 from scheduler import start_scheduler, sync_stocks_and_prices, import_woo_orders  # noqa: E402
 from api_keys import (  # noqa: E402
     AVAILABLE_SCOPES, EVENT_TYPES, generate_api_key, generate_secret,
@@ -1344,6 +1345,216 @@ async def ai_bulk_translate(payload: BulkTranslatePayload, current=Depends(get_c
     return {"success": True, "updated": updated, "errors": errors[:5]}
 
 
+
+
+# ========== KEEPA (Amazon Price Tracking) ==========
+def _keepa_settings_key(current) -> str:
+    """Return app_settings key for Keepa config (global admin only)."""
+    return "integrations:keepa"
+
+
+async def get_keepa_api_key() -> Optional[str]:
+    """Get configured Keepa API key (admin global only)."""
+    doc = await db.app_settings.find_one({"key": "integrations:keepa"})
+    return doc.get("apiKey") if doc else None
+
+
+@app.get("/api/integrations/keepa")
+async def get_keepa_config(_=Depends(get_current_user)):
+    """Get Keepa integration status."""
+    key = await get_keepa_api_key()
+    return {
+        "configured": bool(key),
+        "marketplaces": list(keepa_client.KEEPA_DOMAINS.keys()),
+    }
+
+
+@app.put("/api/integrations/keepa")
+async def set_keepa_config(payload: dict, current=Depends(get_current_user)):
+    """Set Keepa API key (admin only)."""
+    if current.get("role") != "admin":
+        raise HTTPException(403, "Réservé aux admins")
+    
+    api_key = payload.get("apiKey", "").strip()
+    if not api_key:
+        raise HTTPException(400, "Clé API Keepa requise")
+    
+    # Test the key by creating a client
+    try:
+        await keepa_client.get_keepa_client(api_key)
+    except Exception as e:
+        raise HTTPException(400, f"Clé API invalide: {str(e)}")
+    
+    # Save to DB
+    await db.app_settings.update_one(
+        {"key": "integrations:keepa"},
+        {"$set": {"key": "integrations:keepa", "apiKey": api_key, "updatedAt": utc_now()}},
+        upsert=True,
+    )
+    
+    # Update runtime
+    keepa_client.set_keepa_api_key(api_key)
+    
+    return {"success": True, "message": "Clé Keepa configurée"}
+
+
+@app.delete("/api/integrations/keepa")
+async def delete_keepa_config(current=Depends(get_current_user)):
+    """Delete Keepa API key (admin only)."""
+    if current.get("role") != "admin":
+        raise HTTPException(403, "Réservé aux admins")
+    
+    await db.app_settings.delete_one({"key": "integrations:keepa"})
+    keepa_client.set_keepa_api_key(None)
+    
+    return {"success": True, "message": "Clé Keepa supprimée"}
+
+
+class KeepaCompareRequest(BaseModel):
+    supplier_id: str
+    marketplace: str = "amazon.fr"
+    cache_ttl_minutes: int = 15
+
+
+@app.post("/api/keepa/compare-supplier")
+async def compare_supplier_with_amazon(
+    payload: KeepaCompareRequest,
+    current=Depends(get_current_user),
+):
+    """Compare supplier products with Amazon prices via Keepa.
+    
+    Returns list of products with Amazon pricing data, margins, etc.
+    """
+    # Check if Keepa is configured
+    api_key = await get_keepa_api_key()
+    if not api_key:
+        raise HTTPException(400, "Keepa non configuré. Ajoutez votre clé API dans Réglages.")
+    
+    # Validate marketplace
+    if payload.marketplace not in keepa_client.KEEPA_DOMAINS:
+        raise HTTPException(400, f"Marketplace non supporté: {payload.marketplace}")
+    
+    # Get supplier
+    supplier = await db.suppliers.find_one(scope_q(current, {"_id": oid(payload.supplier_id)}))
+    if not supplier:
+        raise HTTPException(404, "Fournisseur non trouvé")
+    
+    # Get all products for this supplier
+    products = await db.supplier_products.find(
+        scope_q(current, {"supplierId": payload.supplier_id})
+    ).to_list(None)
+    
+    if not products:
+        return {"success": True, "results": [], "message": "Aucun produit trouvé pour ce fournisseur"}
+    
+    results = []
+    cache_ttl_seconds = payload.cache_ttl_minutes * 60
+    now = datetime.now(timezone.utc)
+    
+    for product in products:
+        ean = product.get("ean", "").strip()
+        if not ean or len(ean) < 8:
+            continue  # Skip products without valid EAN
+        
+        # Check cache first
+        cache_key = f"{ean}:{payload.marketplace}"
+        cached = await db.keepa_cache.find_one({"cache_key": cache_key})
+        
+        keepa_data = None
+        if cached and (now - cached.get("fetched_at", now)).total_seconds() < cache_ttl_seconds:
+            # Use cached data
+            keepa_data = cached.get("data")
+        else:
+            # Need to fetch from Keepa
+            # First, resolve EAN to ASIN
+            asin_mapping = await db.ean_asin_mapping.find_one({
+                "ean": ean,
+                "marketplace": payload.marketplace
+            })
+            
+            if not asin_mapping:
+                # No ASIN mapping found - skip for now
+                # TODO: Implement dynamic EAN -> ASIN resolution via Amazon PA API
+                continue
+            
+            asin = asin_mapping.get("asin")
+            if not asin:
+                continue
+            
+            # Query Keepa
+            try:
+                keepa_data = await keepa_client.query_product_by_asin(
+                    asin,
+                    payload.marketplace,
+                    api_key
+                )
+                
+                if keepa_data:
+                    # Cache the result
+                    await db.keepa_cache.update_one(
+                        {"cache_key": cache_key},
+                        {
+                            "$set": {
+                                "cache_key": cache_key,
+                                "ean": ean,
+                                "marketplace": payload.marketplace,
+                                "data": keepa_data,
+                                "fetched_at": now,
+                            }
+                        },
+                        upsert=True
+                    )
+            except Exception as e:
+                print(f"Error querying Keepa for EAN {ean}: {e}")
+                continue
+        
+        if not keepa_data:
+            continue
+        
+        # Calculate margin
+        supplier_price = product.get("costPrice", 0)
+        amazon_price = keepa_data.get("amazon_price")
+        buybox_price = keepa_data.get("buybox_price")
+        
+        # Use buybox price if available, otherwise Amazon price
+        reference_price = buybox_price if buybox_price else amazon_price
+        
+        margin_eur = None
+        margin_pct = None
+        if reference_price and supplier_price:
+            margin_eur = reference_price - supplier_price
+            margin_pct = (margin_eur / reference_price * 100) if reference_price > 0 else 0
+        
+        results.append({
+            "product_id": str(product["_id"]),
+            "supplier_sku": product.get("supplierSku", ""),
+            "name": product.get("name", ""),
+            "ean": ean,
+            "supplier_price": supplier_price,
+            "currency": keepa_data.get("currency", "EUR"),
+            "amazon_price": amazon_price,
+            "buybox_price": buybox_price,
+            "sales_rank": keepa_data.get("sales_rank"),
+            "offer_count": keepa_data.get("offer_count", 0),
+            "margin_eur": round(margin_eur, 2) if margin_eur is not None else None,
+            "margin_pct": round(margin_pct, 2) if margin_pct is not None else None,
+            "image_url": keepa_data.get("image_url"),
+            "asin": keepa_data.get("asin"),
+            "stock": product.get("stock", 0),
+            "fetched_at": keepa_data.get("fetched_at"),
+        })
+    
+    return {
+        "success": True,
+        "supplier_name": supplier.get("name", ""),
+        "marketplace": payload.marketplace,
+        "total_products": len(products),
+        "compared_products": len(results),
+        "results": results,
+    }
+
+
+
 # ========== WOOCOMMERCE WEBHOOKS ==========
 def _verify_wc_signature(body: bytes, signature: Optional[str], secret: str) -> bool:
     """Verify WooCommerce webhook HMAC-SHA256 signature."""
@@ -2139,8 +2350,20 @@ async def startup():
     await db.supplier_products.create_index([("supplierId", 1), ("productId", 1)])
     await db.orders.create_index("orderNumber")
     await db.orders.create_index("wpOrderId", sparse=True)
+    
+    # Keepa cache with TTL (expires after 15 minutes by default)
+    await db.keepa_cache.create_index("cache_key", unique=True)
+    await db.keepa_cache.create_index("fetched_at", expireAfterSeconds=900)  # 15 min TTL
+    
+    # Load DeepSeek key
     _ds = await db.app_settings.find_one({"key": "integrations:deepseek"})
     if _ds and (_ds.get("value") or {}).get("apiKey"):
         deepseek.set_api_key(_ds["value"]["apiKey"])
+    
+    # Load Keepa key
+    _keepa = await db.app_settings.find_one({"key": "integrations:keepa"})
+    if _keepa and _keepa.get("apiKey"):
+        keepa_client.set_keepa_api_key(_keepa["apiKey"])
+    
     start_scheduler(db)
     print("✓ EuropaDrop API démarrée")

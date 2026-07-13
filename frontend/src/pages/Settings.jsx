@@ -17,10 +17,14 @@ export default function Settings() {
   const [ds, setDs] = useState({ configured: false, hasKey: false, keyPreview: "" });
   const [dsKey, setDsKey] = useState("");
   const [dsSaving, setDsSaving] = useState(false);
+  const [keepa, setKeepa] = useState({ configured: false, marketplaces: [] });
+  const [keepaKey, setKeepaKey] = useState("");
+  const [keepaSaving, setKeepaSaving] = useState(false);
 
   useEffect(() => {
     api.get("/settings").then((r) => setS(r.data.settings));
     api.get("/integrations/deepseek").then((r) => setDs(r.data)).catch(() => {});
+    api.get("/integrations/keepa").then((r) => setKeepa(r.data)).catch(() => {});
   }, []);
 
   const saveDeepseek = async () => {
@@ -37,6 +41,33 @@ export default function Settings() {
       toast.error(e.response?.data?.detail || "Erreur d'enregistrement");
     } finally {
       setDsSaving(false);
+    }
+  };
+
+  const saveKeepa = async () => {
+    if (!keepaKey.trim()) { toast.error("Saisissez une clé Keepa"); return; }
+    setKeepaSaving(true);
+    try {
+      const r = await api.put("/integrations/keepa", { apiKey: keepaKey.trim() });
+      toast.success(r.data.message || "Clé Keepa enregistrée");
+      const info = await api.get("/integrations/keepa");
+      setKeepa(info.data);
+      setKeepaKey("");
+    } catch (e) {
+      toast.error(e.response?.data?.detail || "Erreur d'enregistrement");
+    } finally {
+      setKeepaSaving(false);
+    }
+  };
+
+  const deleteKeepa = async () => {
+    if (!confirm("Supprimer la clé Keepa ?")) return;
+    try {
+      await api.delete("/integrations/keepa");
+      setKeepa({ configured: false, marketplaces: [] });
+      toast.success("Clé Keepa supprimée");
+    } catch (e) {
+      toast.error(e.response?.data?.detail || "Erreur");
     }
   };
 
@@ -157,6 +188,63 @@ export default function Settings() {
             <button className="btn btn-primary" onClick={saveDeepseek} disabled={dsSaving} data-testid="deepseek-save-btn">
               <FloppyDisk size={14} weight="bold" /> {dsSaving ? "Enregistrement…" : "Enregistrer la clé"}
             </button>
+          </div>
+        </div>
+      </Card>
+
+      <Card title="Keepa — Comparaison prix Amazon" className="mt-6">
+        <div className="p-5 space-y-4">
+          <div className="flex items-center gap-2 text-[13px]">
+            {keepa.configured ? (
+              <>
+                <CheckCircle size={18} weight="fill" className="text-success" />
+                <span className="font-semibold text-success">Clé configurée</span>
+                <span className="text-[11px] text-muted-foreground">
+                  {keepa.marketplaces?.length || 0} marketplaces supportés
+                </span>
+              </>
+            ) : (
+              <>
+                <XCircle size={18} weight="fill" className="text-critical" />
+                <span className="font-semibold text-critical">Aucune clé configurée</span>
+              </>
+            )}
+          </div>
+          <p className="text-[12px] text-muted-foreground">
+            Keepa permet de comparer vos prix fournisseurs avec les prix Amazon en temps réel pour identifier les meilleures opportunités de marge.
+            Obtenez une clé API sur <span className="mono">keepa.com/#!api</span>.
+          </p>
+          <div className="flex items-center gap-2">
+            <div className="relative flex-1 max-w-md">
+              <Robot size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" weight="bold" />
+              <input
+                type="password"
+                className="input pl-9"
+                placeholder="Clé API Keepa..."
+                value={keepaKey}
+                onChange={(e) => setKeepaKey(e.target.value)}
+                data-testid="keepa-key-input"
+              />
+            </div>
+            <button
+              className="btn btn-primary"
+              onClick={saveKeepa}
+              disabled={keepaSaving}
+              data-testid="keepa-save-btn"
+            >
+              <FloppyDisk size={14} weight="bold" />
+              {keepaSaving ? "Enregistrement…" : "Enregistrer"}
+            </button>
+            {keepa.configured && (
+              <button
+                className="btn btn-ghost text-critical"
+                onClick={deleteKeepa}
+                data-testid="keepa-delete-btn"
+              >
+                <XCircle size={14} weight="bold" />
+                Supprimer
+              </button>
+            )}
           </div>
         </div>
       </Card>

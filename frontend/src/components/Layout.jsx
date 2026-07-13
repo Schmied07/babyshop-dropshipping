@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import {
   ChartLineUp, Package, Storefront, ShoppingBag, Percent, ArrowsClockwise,
   BellRinging, SignOut, MagnifyingGlass, PlugsConnected, DownloadSimple, Robot, Key,
-  Users as UsersIcon, Buildings, Gear, TrendUp, LockSimple, LockSimpleOpen,
+  Users as UsersIcon, Buildings, Gear, TrendUp, LockSimple, LockSimpleOpen, ChartBar,
 } from "@phosphor-icons/react";
 import { useAuth } from "../lib/auth";
 import api from "../lib/api";
@@ -21,6 +21,7 @@ const links = [
   { to: "/woocommerce", label: "WooCommerce", icon: ArrowsClockwise, testid: "nav-woocommerce" },
   { to: "/boutiques", label: "Boutiques WP", icon: Buildings, testid: "nav-stores" },
   { to: "/veille-prix", label: "Veille prix", icon: TrendUp, testid: "nav-price-watch" },
+  { to: "/comparaison-keepa", label: "Comparaison Amazon", icon: ChartBar, testid: "nav-keepa" },
   { to: "/automatisations", label: "Automatisations", icon: Robot, testid: "nav-automations" },
   { to: "/cles-api", label: "Clés API", icon: Key, testid: "nav-api-keys" },
   { to: "/utilisateurs", label: "Utilisateurs", icon: UsersIcon, testid: "nav-users" },
