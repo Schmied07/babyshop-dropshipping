@@ -1,4 +1,12 @@
-# EuropaDrop — PRD v1.7
+# EuropaDrop — PRD v1.8
+
+### v1.8 (session 9 — fixes suppression catalogue + modales derrière navbar + clé DeepSeek UI + audit API Qogita, juillet 2026)
+- **Fix bug suppression catalogue** : nouveau endpoint serveur `POST /api/products/bulk-delete` (accepte `{ids:[...]}` OU `{all:true, q, category, sync_status}`) — supprime N produits en UNE requête (avant : jusqu'à 200 requêtes DELETE parallèles vers Atlas → échecs). UI Catalogue : lien « Sélectionner les {total} produits du filtre ». Nettoie aussi supplier_products + product_mappings. ✅ testé (iteration_7, 100%).
+- **Fix bug modales cachées par la navbar** : `.fade-up` (index.css) retirait `both` → supprime le `transform` persistant qui créait un contexte d'empilement faisant passer les modales `fixed z-50/60` derrière le header sticky `z-30`. ✅ 5/5 modales OK (iteration_7).
+- **Clé DeepSeek dans l'UI** : page Réglages → carte « Intelligence Artificielle (DeepSeek) » (admin uniquement). `GET/PUT /api/integrations/deepseek`, stockée dans `app_settings` key `integrations:deepseek`, chargée au démarrage, prioritaire sur `.env`. `deepseek.py` : clé runtime via `set_api_key()`/`current_key()`.
+- **Nettoyage DB** : 3 lignes parasites d'un mauvais import Qogita supprimées (en-tête `Name`/`GTIN` + 2 pieds de page). Migration `priceLock` = no-op (0 candidat). Catégories polluées (GTIN) : nettoyage IA reporté à la demande de l'utilisateur.
+- **Audit API Qogita (EN PAUSE — l'utilisateur demande l'accès à l'API publique)** : identifiants live OK (login → accessToken). Fiable : `/auth/login/`, `/categories/` (530), `/brands/` (41925), `/variants/{gtin}/` (données riches SANS prix). NON disponible en REST : recherche texte, liste variants par catégorie, prix unitaire stable (dynamique/panier), export catalogue async/webhook (404). MVP futur envisagé : import par GTIN.
+- Compte QA de test : `qa.tester@europadrop-qa.fr` / `QaTest1234!` (opérateur isolé, 12 produits jetables).
 
 ### v1.7 (session 8 — mapping IA à l'import, juillet 2026)
 - **Détection auto des colonnes par IA** (DeepSeek) à l'import : `/api/ai/smart-mapping` (repli heuristique si IA absente) + bouton « Détecter les colonnes (IA) ».
