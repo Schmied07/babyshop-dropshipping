@@ -128,7 +128,7 @@ export default function WooProducts() {
       </div>
 
       {/* Filters */}
-      <Card className="bg-blue-900/20 border-blue-500/30">
+      <div className="p-4 rounded-lg bg-blue-900/70 border-2 border-blue-400 shadow-xl mb-6">
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           <div className="md:col-span-2">
             <div className="flex gap-2">
@@ -138,13 +138,13 @@ export default function WooProducts() {
                 onChange={(e) => setSearch(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && handleSearch()}
                 placeholder="Rechercher par nom ou SKU..."
-                className="flex-1 px-3 py-2 bg-blue-950/30 border-2 border-blue-500/40 rounded text-white text-sm placeholder-blue-300/50 focus:border-blue-400 focus:outline-none"
+                className="flex-1 px-4 py-3 bg-blue-800 border-2 border-blue-400 rounded-lg text-white text-sm placeholder-blue-200 focus:border-blue-300 focus:outline-none focus:ring-2 focus:ring-blue-400 font-medium"
               />
               <button
                 onClick={handleSearch}
-                className="px-4 py-2 bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white rounded text-sm shadow-lg"
+                className="px-5 py-3 bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white rounded-lg text-sm shadow-lg font-bold"
               >
-                <MagnifyingGlass size={16} />
+                <MagnifyingGlass size={18} weight="bold" />
               </button>
             </div>
           </div>
@@ -153,11 +153,11 @@ export default function WooProducts() {
             <select
               value={filterFulfillment}
               onChange={(e) => setFilterFulfillment(e.target.value)}
-              className="w-full px-3 py-2 bg-blue-950/30 border-2 border-blue-500/40 rounded text-white text-sm focus:border-blue-400 focus:outline-none"
+              className="w-full px-4 py-3 bg-blue-800 border-2 border-blue-400 rounded-lg text-white text-sm focus:border-blue-300 focus:outline-none focus:ring-2 focus:ring-blue-400 font-medium"
             >
-              <option value="">Tous types</option>
-              <option value="dropshipping">Dropshipping</option>
-              <option value="stock">Stock</option>
+              <option value="" className="bg-blue-950">Tous types</option>
+              <option value="dropshipping" className="bg-blue-950">Dropshipping</option>
+              <option value="stock" className="bg-blue-950">Stock</option>
             </select>
           </div>
           
@@ -165,15 +165,15 @@ export default function WooProducts() {
             <select
               value={filterMapping}
               onChange={(e) => setFilterMapping(e.target.value)}
-              className="w-full px-3 py-2 bg-blue-950/30 border-2 border-blue-500/40 rounded text-white text-sm focus:border-blue-400 focus:outline-none"
+              className="w-full px-4 py-3 bg-blue-800 border-2 border-blue-400 rounded-lg text-white text-sm focus:border-blue-300 focus:outline-none focus:ring-2 focus:ring-blue-400 font-medium"
             >
-              <option value="">Tous</option>
-              <option value="mapped">Mappés</option>
-              <option value="unmapped">Non mappés</option>
+              <option value="" className="bg-blue-950">Tous</option>
+              <option value="mapped" className="bg-blue-950">Mappés</option>
+              <option value="unmapped" className="bg-blue-950">Non mappés</option>
             </select>
           </div>
         </div>
-      </Card>
+      </div>
 
       {/* Stats */}
       {products.length > 0 && (
