@@ -1684,24 +1684,25 @@ async def wc_regenerate_secret(request: Request, _=Depends(get_current_user)):
 # ========== WOOCOMMERCE PRODUCTS MANAGEMENT ==========
 async def _get_woocommerce_credentials(current: dict) -> dict:
     """Get and validate WooCommerce credentials for current user."""
-    store_doc = await db.stores.find_one(scope_q(current))
+    store_doc = await db.stores.find_one(scope_q(current, {"isActive": True}))
     if not store_doc:
         raise HTTPException(
             404, 
             "Aucune boutique WooCommerce configurée. "
-            "Allez dans 'Boutique WooCommerce' pour configurer votre boutique."
+            "Allez dans 'Boutiques WP' pour configurer votre boutique."
         )
     
-    api_url = store_doc.get("apiUrl", "").strip()
-    api_key = store_doc.get("apiKey", "").strip()
-    api_secret = store_doc.get("apiSecret", "").strip()
+    # Les champs dans la collection stores sont: url, key, secret (sans préfixe "api")
+    api_url = store_doc.get("url", "").strip()
+    api_key = store_doc.get("key", "").strip()
+    api_secret = store_doc.get("secret", "").strip()
     
     # Validate credentials
     if not api_url:
         raise HTTPException(
             400, 
             "URL de l'API WooCommerce manquante. "
-            "Configurez votre boutique dans 'Boutique WooCommerce'."
+            "Configurez votre boutique dans 'Boutiques WP'."
         )
     
     # Clean URL: remove /wp-json/wc/v3 suffix if present (added automatically by our code)
@@ -1724,7 +1725,7 @@ async def _get_woocommerce_credentials(current: dict) -> dict:
         raise HTTPException(
             400, 
             "Clés API WooCommerce manquantes (Consumer Key/Secret). "
-            "Configurez votre boutique dans 'Boutique WooCommerce'."
+            "Configurez votre boutique dans 'Boutiques WP'."
         )
     
     return {
