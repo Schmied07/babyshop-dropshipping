@@ -84,15 +84,15 @@ export default function WooProducts() {
   return (
     <div className="space-y-6" data-testid="woo-products-page">
       {/* Header */}
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex items-center justify-between mb-6 bg-gradient-to-r from-blue-600 to-blue-800 p-6 rounded-xl shadow-2xl border-2 border-blue-400">
         <div>
-          <h1 className="text-3xl font-bold text-white flex items-center gap-3">
-            <div className="p-2 bg-gradient-to-br from-blue-500 to-blue-600 rounded-lg shadow-lg">
-              <ShoppingCart size={32} weight="bold" className="text-white" />
+          <h1 className="text-4xl font-black text-white flex items-center gap-3 drop-shadow-lg">
+            <div className="p-3 bg-white rounded-xl shadow-xl">
+              <ShoppingCart size={36} weight="bold" className="text-blue-600" />
             </div>
             Produits Boutique WooCommerce
           </h1>
-          <p className="text-white text-base mt-2 font-medium">
+          <p className="text-white text-lg mt-3 font-bold drop-shadow">
             Gérez vos produits WooCommerce et mappez-les aux fournisseurs
           </p>
         </div>

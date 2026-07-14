@@ -1,0 +1,26 @@
+{
+  "summary": "Frontend UI verification of WooProducts header readability fix. Login as QA tester (admin@creook.fr password unavailable in memory), navigated to /produits-boutique. Header now displays a vivid blue gradient banner with ultra-bold white text — fully readable without hover. Table row data could not be visually verified because QA tester operator has 0 products in marcherbien.fr store, but CSS class analysis confirms no hover dependency for text visibility.",
+  "tested_scope": ["frontend"],
+  "passed": [
+    "Header banner background = linear-gradient(rgb(37,99,235) -> rgb(30,64,175)) — vivid blue as intended (from-blue-600 to-blue-800)",
+    "H1 'Produits Boutique WooCommerce' — color rgb(255,255,255), fontWeight 900 (font-black), fontSize 36px — perfectly readable without hover",
+    "Subtitle 'Gérez vos produits WooCommerce...' — color rgb(255,255,255), fontWeight 700 (font-bold), fontSize 18px — readable without hover",
+    "Header icon container background = rgb(255,255,255) (white) with blue ShoppingCart icon — visible on blue banner",
+    "Screenshot confirms header is highly prominent and legible with no interaction required",
+    "Code review (WooProducts.jsx L238-336) confirms base row classes use text-white/font-bold for product name, SKU, price — hover:bg-zinc-800/50 only affects background, not text color/visibility"
+  ],
+  "failed": [
+    {
+      "area": "Table data rows visual verification",
+      "issue": "QA tester (operator role) has 0 products in the marcherbien.fr WooCommerce store; empty state 'Aucun produit trouvé' shown. Could not visually confirm 'Non mappé', SKU, Prix readability on real data rows.",
+      "evidence": "tbody tr count = 0 on /produits-boutique. admin@creook.fr password not in /app/memory/test_credentials.md, so could not test with admin who has synced products.",
+      "priority": "LOW"
+    }
+  ],
+  "action_items": [
+    "If user wants full visual QA of table rows without hover, provide admin@creook.fr password OR run 'Synchroniser WooCommerce' as an admin so products appear for a test operator. Static code review indicates the fix is correctly applied (no hover dependency for text)."
+  ],
+  "success_rate": {"backend": "n/a (skipped per request)", "frontend": "100% for header fix; table rows verified via code review only"},
+  "retest_needed": false,
+  "full_testing_deferred": true
+}
