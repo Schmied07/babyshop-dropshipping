@@ -380,8 +380,10 @@ export default function WooProducts() {
 function MapSupplierModal({ product, onClose, onSuccess }) {
   const [suppliers, setSuppliers] = useState([]);
   const [supplierProducts, setSupplierProducts] = useState([]);
+  const [filteredProducts, setFilteredProducts] = useState([]);
   const [selectedSupplier, setSelectedSupplier] = useState("");
   const [selectedProduct, setSelectedProduct] = useState("");
+  const [searchQuery, setSearchQuery] = useState("");
   const [fulfillmentType, setFulfillmentType] = useState("dropshipping");
   const [marginMode, setMarginMode] = useState("auto");
   const [targetMargin, setTargetMargin] = useState("");
@@ -395,9 +397,28 @@ function MapSupplierModal({ product, onClose, onSuccess }) {
   useEffect(() => {
     if (selectedSupplier) {
       api.get(`/supplier-products?supplierId=${selectedSupplier}`)
-        .then((r) => setSupplierProducts(r.data.data || []));
+        .then((r) => {
+          const products = r.data.data || [];
+          setSupplierProducts(products);
+          setFilteredProducts(products);
+        });
     }
   }, [selectedSupplier]);
+
+  // Filter products based on search
+  useEffect(() => {
+    if (!searchQuery) {
+      setFilteredProducts(supplierProducts);
+    } else {
+      const query = searchQuery.toLowerCase();
+      const filtered = supplierProducts.filter(p => 
+        p.name?.toLowerCase().includes(query) ||
+        p.supplierSku?.toLowerCase().includes(query) ||
+        p.ean?.toLowerCase().includes(query)
+      );
+      setFilteredProducts(filtered);
+    }
+  }, [searchQuery, supplierProducts]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -415,7 +436,7 @@ function MapSupplierModal({ product, onClose, onSuccess }) {
         target_margin_pct: marginMode === "manual" ? parseFloat(targetMargin) : null,
         extra_costs: parseFloat(extraCosts) || 0,
       });
-      toast.success("Mapping créé avec succès !");
+      toast.success("✅ Mapping créé avec succès !");
       onSuccess();
     } catch (e) {
       toast.error(e.response?.data?.detail || "Erreur");
@@ -425,117 +446,215 @@ function MapSupplierModal({ product, onClose, onSuccess }) {
   };
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <div className="bg-zinc-900 rounded-lg max-w-2xl w-full max-h-[90vh] overflow-y-auto">
-        <div className="p-6 border-b border-zinc-800">
-          <h2 className="text-xl font-bold text-white">Mapper au fournisseur</h2>
-          <p className="text-sm text-zinc-400 mt-1">{product.name}</p>
+    <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
+      <div className="bg-zinc-900 rounded-lg max-w-4xl w-full max-h-[90vh] overflow-y-auto border border-zinc-700">
+        <div className="p-6 border-b border-zinc-700 bg-zinc-800/50">
+          <h2 className="text-xl font-bold text-white flex items-center gap-2">
+            <LinkSimple size={24} weight="bold" className="text-blue-400" />
+            Mapper au fournisseur
+          </h2>
+          <div className="mt-3 p-3 bg-blue-500/10 border border-blue-500/30 rounded">
+            <div className="text-sm font-medium text-blue-400">Produit WooCommerce :</div>
+            <div className="text-white font-semibold">{product.name}</div>
+            {product.sku && <div className="text-xs text-zinc-400">SKU: {product.sku}</div>}
+          </div>
         </div>
         
-        <form onSubmit={handleSubmit} className="p-6 space-y-4">
+        <form onSubmit={handleSubmit} className="p-6 space-y-5">
+          {/* Supplier Selection */}
           <div>
-            <label className="block text-sm font-medium text-zinc-400 mb-2">Fournisseur</label>
+            <label className="block text-sm font-semibold text-white mb-2">
+              1. Sélectionner le fournisseur
+            </label>
             <select
               value={selectedSupplier}
-              onChange={(e) => setSelectedSupplier(e.target.value)}
+              onChange={(e) => {
+                setSelectedSupplier(e.target.value);
+                setSelectedProduct("");
+                setSearchQuery("");
+              }}
               required
-              className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded text-white"
+              className="w-full px-4 py-3 bg-zinc-800 border-2 border-zinc-600 rounded-lg text-white font-medium focus:border-blue-500 focus:outline-none"
             >
-              <option value="">-- Sélectionner --</option>
+              <option value="">-- Choisir un fournisseur --</option>
               {suppliers.map((s) => (
                 <option key={s.id} value={s.id}>{s.name}</option>
               ))}
             </select>
           </div>
 
+          {/* Product Search & Selection */}
           {selectedSupplier && (
             <div>
-              <label className="block text-sm font-medium text-zinc-400 mb-2">Produit fournisseur</label>
-              <select
-                value={selectedProduct}
-                onChange={(e) => setSelectedProduct(e.target.value)}
-                required
-                className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded text-white"
-              >
-                <option value="">-- Sélectionner --</option>
-                {supplierProducts.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.name} - {fmtEUR(p.costPrice)} (Stock: {p.stock})
-                  </option>
-                ))}
-              </select>
+              <label className="block text-sm font-semibold text-white mb-2">
+                2. Rechercher et sélectionner le produit fournisseur correspondant
+              </label>
+              
+              {/* Search Box */}
+              <div className="mb-3">
+                <input
+                  type="text"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder="Rechercher par nom, SKU ou EAN..."
+                  className="w-full px-4 py-2 bg-zinc-800 border border-zinc-600 rounded-lg text-white placeholder-zinc-500 focus:border-blue-500 focus:outline-none"
+                />
+                <div className="text-xs text-zinc-400 mt-1">
+                  {filteredProducts.length} produit(s) trouvé(s)
+                </div>
+              </div>
+
+              {/* Product List */}
+              <div className="max-h-64 overflow-y-auto border border-zinc-700 rounded-lg">
+                {filteredProducts.length === 0 ? (
+                  <div className="p-8 text-center text-zinc-500">
+                    <Package size={32} className="mx-auto mb-2 opacity-50" />
+                    Aucun produit trouvé
+                  </div>
+                ) : (
+                  filteredProducts.map((p) => (
+                    <label
+                      key={p.id}
+                      className={`flex items-center gap-3 p-3 cursor-pointer hover:bg-zinc-800/50 border-b border-zinc-800 last:border-0 ${
+                        selectedProduct === p.id ? "bg-blue-500/20 border-l-4 border-l-blue-500" : ""
+                      }`}
+                    >
+                      <input
+                        type="radio"
+                        name="supplierProduct"
+                        value={p.id}
+                        checked={selectedProduct === p.id}
+                        onChange={() => setSelectedProduct(p.id)}
+                        className="w-4 h-4"
+                      />
+                      <div className="flex-1 min-w-0">
+                        <div className="text-white font-medium text-sm">{p.name}</div>
+                        <div className="flex items-center gap-4 mt-1 text-xs text-zinc-400">
+                          {p.supplierSku && <span>SKU: {p.supplierSku}</span>}
+                          {p.ean && <span>EAN: {p.ean}</span>}
+                          <span className="font-semibold text-green-400">{fmtEUR(p.costPrice)}</span>
+                          <span className={p.stock > 0 ? "text-green-400" : "text-red-400"}>
+                            Stock: {p.stock}
+                          </span>
+                        </div>
+                      </div>
+                    </label>
+                  ))
+                )}
+              </div>
             </div>
           )}
 
-          <div>
-            <label className="block text-sm font-medium text-zinc-400 mb-2">Type de gestion</label>
-            <select
-              value={fulfillmentType}
-              onChange={(e) => setFulfillmentType(e.target.value)}
-              className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded text-white"
-            >
-              <option value="dropshipping">Dropshipping (envoi direct fournisseur)</option>
-              <option value="stock">Stock (achat puis réexpédition)</option>
-            </select>
-          </div>
+          {/* Fulfillment Type */}
+          {selectedProduct && (
+            <>
+              <div>
+                <label className="block text-sm font-semibold text-white mb-2">
+                  3. Type de gestion
+                </label>
+                <div className="grid grid-cols-2 gap-3">
+                  <label className={`p-4 border-2 rounded-lg cursor-pointer transition ${
+                    fulfillmentType === "dropshipping"
+                      ? "bg-orange-500/20 border-orange-500 text-white"
+                      : "bg-zinc-800 border-zinc-600 text-zinc-400"
+                  }`}>
+                    <input
+                      type="radio"
+                      name="fulfillment"
+                      value="dropshipping"
+                      checked={fulfillmentType === "dropshipping"}
+                      onChange={(e) => setFulfillmentType(e.target.value)}
+                      className="sr-only"
+                    />
+                    <div className="font-semibold mb-1">🚚 Dropshipping</div>
+                    <div className="text-xs">Envoi direct fournisseur</div>
+                  </label>
+                  <label className={`p-4 border-2 rounded-lg cursor-pointer transition ${
+                    fulfillmentType === "stock"
+                      ? "bg-purple-500/20 border-purple-500 text-white"
+                      : "bg-zinc-800 border-zinc-600 text-zinc-400"
+                  }`}>
+                    <input
+                      type="radio"
+                      name="fulfillment"
+                      value="stock"
+                      checked={fulfillmentType === "stock"}
+                      onChange={(e) => setFulfillmentType(e.target.value)}
+                      className="sr-only"
+                    />
+                    <div className="font-semibold mb-1">📦 Stock</div>
+                    <div className="text-xs">Achat puis réexpédition</div>
+                  </label>
+                </div>
+              </div>
 
-          <div>
-            <label className="block text-sm font-medium text-zinc-400 mb-2">Mode de marge</label>
-            <select
-              value={marginMode}
-              onChange={(e) => setMarginMode(e.target.value)}
-              className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded text-white"
-            >
-              <option value="auto">Automatique (calcul depuis prix WooCommerce)</option>
-              <option value="manual">Manuel (définir marge cible → calcul prix vente)</option>
-            </select>
-          </div>
+              {/* Margin Settings */}
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-semibold text-white mb-2">
+                    Mode de marge
+                  </label>
+                  <select
+                    value={marginMode}
+                    onChange={(e) => setMarginMode(e.target.value)}
+                    className="w-full px-3 py-2 bg-zinc-800 border border-zinc-600 rounded text-white"
+                  >
+                    <option value="auto">Automatique</option>
+                    <option value="manual">Manuel</option>
+                  </select>
+                </div>
 
-          {marginMode === "manual" && (
-            <div>
-              <label className="block text-sm font-medium text-zinc-400 mb-2">Marge cible (%)</label>
-              <input
-                type="number"
-                value={targetMargin}
-                onChange={(e) => setTargetMargin(e.target.value)}
-                min="0"
-                max="100"
-                step="0.1"
-                placeholder="Ex: 30"
-                className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded text-white"
-              />
-            </div>
+                {marginMode === "manual" && (
+                  <div>
+                    <label className="block text-sm font-semibold text-white mb-2">
+                      Marge cible (%)
+                    </label>
+                    <input
+                      type="number"
+                      value={targetMargin}
+                      onChange={(e) => setTargetMargin(e.target.value)}
+                      min="0"
+                      max="100"
+                      step="0.1"
+                      placeholder="Ex: 30"
+                      className="w-full px-3 py-2 bg-zinc-800 border border-zinc-600 rounded text-white"
+                    />
+                  </div>
+                )}
+
+                <div>
+                  <label className="block text-sm font-semibold text-white mb-2">
+                    Frais supplémentaires (€)
+                  </label>
+                  <input
+                    type="number"
+                    value={extraCosts}
+                    onChange={(e) => setExtraCosts(e.target.value)}
+                    min="0"
+                    step="0.01"
+                    placeholder="0.00"
+                    className="w-full px-3 py-2 bg-zinc-800 border border-zinc-600 rounded text-white"
+                  />
+                </div>
+              </div>
+            </>
           )}
 
-          <div>
-            <label className="block text-sm font-medium text-zinc-400 mb-2">
-              Frais supplémentaires (€)
-            </label>
-            <input
-              type="number"
-              value={extraCosts}
-              onChange={(e) => setExtraCosts(e.target.value)}
-              min="0"
-              step="0.01"
-              placeholder="Stockage, réexpédition..."
-              className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded text-white"
-            />
-          </div>
-
-          <div className="flex gap-3 pt-4">
+          {/* Actions */}
+          <div className="flex gap-3 pt-4 border-t border-zinc-700">
             <button
               type="button"
               onClick={onClose}
-              className="flex-1 px-4 py-2 bg-zinc-800 hover:bg-zinc-700 text-white rounded"
+              className="flex-1 px-4 py-3 bg-zinc-800 hover:bg-zinc-700 text-white rounded-lg font-medium transition"
             >
               Annuler
             </button>
             <button
               type="submit"
-              disabled={saving}
-              className="flex-1 px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-zinc-700 text-white rounded font-medium"
+              disabled={saving || !selectedProduct}
+              className="flex-1 px-4 py-3 bg-blue-600 hover:bg-blue-700 disabled:bg-zinc-700 disabled:cursor-not-allowed text-white rounded-lg font-medium transition"
             >
-              {saving ? "Enregistrement..." : "Mapper"}
+              {saving ? "⏳ Enregistrement..." : "✅ Créer le mapping"}
             </button>
           </div>
         </form>
