@@ -1682,19 +1682,53 @@ async def wc_regenerate_secret(request: Request, _=Depends(get_current_user)):
 
 
 # ========== WOOCOMMERCE PRODUCTS MANAGEMENT ==========
+async def _get_woocommerce_credentials(current: dict) -> dict:
+    """Get and validate WooCommerce credentials for current user."""
+    store_doc = await db.stores.find_one(scope_q(current))
+    if not store_doc:
+        raise HTTPException(
+            404, 
+            "Aucune boutique WooCommerce configurée. "
+            "Allez dans 'Boutique WooCommerce' pour configurer votre boutique."
+        )
+    
+    api_url = store_doc.get("apiUrl", "").strip()
+    api_key = store_doc.get("apiKey", "").strip()
+    api_secret = store_doc.get("apiSecret", "").strip()
+    
+    # Validate credentials
+    if not api_url:
+        raise HTTPException(
+            400, 
+            "URL de l'API WooCommerce manquante. "
+            "Configurez votre boutique dans 'Boutique WooCommerce'."
+        )
+    
+    if not api_url.startswith(("http://", "https://")):
+        raise HTTPException(
+            400, 
+            f"URL invalide : '{api_url}'. "
+            "L'URL doit commencer par http:// ou https:// (ex: https://monsite.com)"
+        )
+    
+    if not api_key or not api_secret:
+        raise HTTPException(
+            400, 
+            "Clés API WooCommerce manquantes (Consumer Key/Secret). "
+            "Configurez votre boutique dans 'Boutique WooCommerce'."
+        )
+    
+    return {
+        "url": api_url,
+        "key": api_key,
+        "secret": api_secret,
+    }
+
+
 @app.post("/api/woocommerce/products/sync")
 async def sync_woocommerce_products(current=Depends(get_current_user)):
     """Synchronize all products from WooCommerce to local database."""
-    # Get WooCommerce credentials
-    store_doc = await db.stores.find_one(scope_q(current))
-    if not store_doc:
-        raise HTTPException(404, "Aucune boutique WooCommerce configurée")
-    
-    creds = {
-        "url": store_doc.get("apiUrl"),
-        "key": store_doc.get("apiKey"),
-        "secret": store_doc.get("apiSecret"),
-    }
+    creds = await _get_woocommerce_credentials(current)
     
     synced_count = 0
     updated_count = 0
@@ -2023,15 +2057,7 @@ async def update_woocommerce_product(
     if payload.sync_to_woo and woo_update_data:
         try:
             # Get WooCommerce credentials
-            store_doc = await db.stores.find_one(scope_q(current))
-            if not store_doc:
-                raise HTTPException(404, "Aucune boutique WooCommerce configurée")
-            
-            creds = {
-                "url": store_doc.get("apiUrl"),
-                "key": store_doc.get("apiKey"),
-                "secret": store_doc.get("apiSecret"),
-            }
+            creds = await _get_woocommerce_credentials(current)
             
             # Update on WooCommerce
             response = await wc.wc_put(
