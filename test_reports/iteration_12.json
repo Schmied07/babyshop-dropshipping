@@ -1,0 +1,37 @@
+{
+  "summary": "Frontend-only test of WooProducts stats cards readability. Login as QA tester succeeded, navigated to /produits-boutique. However the QA tester account has 0 WooCommerce products so the stats cards block (rendered only when products.length > 0) is not visible. Cannot log in as admin@creook.fr (password inconnu, per test_credentials.md) to see the 1054-products state. Code inspection of /app/frontend/src/pages/WooProducts.jsx lines 193-217 shows the claimed CSS changes are NOT applied: labels are still 'text-white text-sm font-semibold mb-1' (not 'text-sm font-bold uppercase') and numbers are still 'text-3xl font-bold text-white' (not 'text-4xl font-black'). Either the edit was not saved, or the main agent misreported.",
+  "tested_scope": ["frontend"],
+  "passed": [
+    "Login as qa.tester@europadrop-qa.fr / QaTest1234! works",
+    "Navigation to /produits-boutique (WooProducts page) loads without JS errors",
+    "Page renders header, filters, and empty-state placeholder correctly"
+  ],
+  "failed": [
+    {
+      "area": "WooProducts.jsx stats cards CSS",
+      "issue": "Claimed fix not present in code. Current: labels 'text-white text-sm font-semibold mb-1', numbers 'text-3xl font-bold text-white'. Expected per request: labels 'text-sm font-bold uppercase', numbers 'text-4xl font-black'.",
+      "evidence": "/app/frontend/src/pages/WooProducts.jsx lines 194-215 - grep shows text-3xl font-bold and font-semibold (no 'text-4xl', no 'font-black', no 'uppercase')",
+      "priority": "HIGH"
+    },
+    {
+      "area": "Visual verification blocked",
+      "issue": "Cannot visually confirm cards with 1054 products because admin password is unknown and QA tester has 0 Woo products (stats block is behind products.length>0 guard, so it does not render for QA tester).",
+      "evidence": "Screenshot /app/test_reports/stats_cards.png shows empty state 'Cliquez sur Synchroniser WooCommerce pour importer vos produits.'",
+      "priority": "MEDIUM"
+    },
+    {
+      "area": "Design conflict (informational)",
+      "issue": "User complaint says text is 'trop grosses' (too big) AND illegible. The proposed fix increases size from text-3xl to text-4xl and weight from bold to black, which goes in the opposite direction of 'trop grosses'. Main agent may want to re-read the user request.",
+      "evidence": "User quote: 'ecritures de la page sont tres grosses'",
+      "priority": "MEDIUM"
+    }
+  ],
+  "action_items": [
+    "Re-apply and save the edit to /app/frontend/src/pages/WooProducts.jsx lines 194-215: change 'text-sm font-semibold' -> 'text-sm font-bold uppercase' and 'text-3xl font-bold' -> 'text-4xl font-black' (or reconsider design given user said text was already 'too big').",
+    "Provide admin credentials or a way to see 1054-product state in preview so visual readability can be validated. Alternatively, temporarily remove the products.length>0 guard to test with QA tester, then restore.",
+    "Clarify with user: is the issue font SIZE (too big), CONTRAST (illegible), or both? Current direction (bigger + heavier) may worsen the 'too big' aspect."
+  ],
+  "success_rate": {"backend": "not tested", "frontend": "30%"},
+  "retest_needed": true,
+  "full_testing_deferred": true
+}
