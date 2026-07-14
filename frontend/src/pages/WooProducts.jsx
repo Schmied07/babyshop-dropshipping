@@ -192,24 +192,24 @@ export default function WooProducts() {
       {products.length > 0 && (
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           <Card className="bg-gradient-to-br from-blue-500 to-blue-600 border-0 shadow-lg">
-            <div className="text-white text-sm font-semibold mb-1">Total produits</div>
-            <div className="text-3xl font-bold text-white">{products.length}</div>
+            <div className="text-white text-sm font-bold mb-1 uppercase tracking-wide">Total produits</div>
+            <div className="text-4xl font-black text-white">{products.length}</div>
           </Card>
           <Card className="bg-gradient-to-br from-green-500 to-green-600 border-0 shadow-lg">
-            <div className="text-white text-sm font-semibold mb-1">Mappés</div>
-            <div className="text-3xl font-bold text-white">
+            <div className="text-white text-sm font-bold mb-1 uppercase tracking-wide">Mappés</div>
+            <div className="text-4xl font-black text-white">
               {products.filter(p => p.supplierProductId || (p.supplierMappings && p.supplierMappings.length > 0)).length}
             </div>
           </Card>
           <Card className="bg-gradient-to-br from-orange-500 to-orange-600 border-0 shadow-lg">
-            <div className="text-white text-sm font-semibold mb-1">Dropshipping</div>
-            <div className="text-3xl font-bold text-white">
+            <div className="text-white text-sm font-bold mb-1 uppercase tracking-wide">Dropshipping</div>
+            <div className="text-4xl font-black text-white">
               {products.filter(p => p.fulfillmentType === "dropshipping").length}
             </div>
           </Card>
           <Card className="bg-gradient-to-br from-purple-500 to-purple-600 border-0 shadow-lg">
-            <div className="text-white text-sm font-semibold mb-1">Stock</div>
-            <div className="text-3xl font-bold text-white">
+            <div className="text-white text-sm font-bold mb-1 uppercase tracking-wide">Stock</div>
+            <div className="text-4xl font-black text-white">
               {products.filter(p => p.fulfillmentType === "stock").length}
             </div>
           </Card>
