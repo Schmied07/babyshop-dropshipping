@@ -49,11 +49,11 @@ def is_configured() -> bool:
 
 
 async def test_connection(creds: dict) -> dict:
-    """Test if credentials work by calling /products?per_page=1."""
+    """Test if credentials work by calling WooCommerce API."""
     try:
         async with httpx.AsyncClient(timeout=15) as client:
             r = await client.get(
-                f"{creds['url']}/products",
+                f"{creds['url']}/wp-json/wc/v3/products",
                 headers=make_auth_header(creds),
                 params={"per_page": 1},
             )
