@@ -119,7 +119,7 @@ export default function WooProducts() {
                 toast.error(e.response?.data?.detail || "Erreur de test");
               }
             }}
-            className="px-4 py-2 bg-zinc-700 hover:bg-zinc-600 text-white rounded text-sm font-medium flex items-center gap-2"
+            className="px-4 py-2 bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 text-white rounded text-sm font-medium flex items-center gap-2 shadow-lg"
           >
             <Check size={16} />
             Tester connexion
@@ -128,7 +128,7 @@ export default function WooProducts() {
       </div>
 
       {/* Filters */}
-      <Card>
+      <Card className="bg-blue-900/20 border-blue-500/30">
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           <div className="md:col-span-2">
             <div className="flex gap-2">
@@ -138,11 +138,11 @@ export default function WooProducts() {
                 onChange={(e) => setSearch(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && handleSearch()}
                 placeholder="Rechercher par nom ou SKU..."
-                className="flex-1 px-3 py-2 bg-zinc-800 border border-zinc-700 rounded text-white text-sm"
+                className="flex-1 px-3 py-2 bg-blue-950/30 border-2 border-blue-500/40 rounded text-white text-sm placeholder-blue-300/50 focus:border-blue-400 focus:outline-none"
               />
               <button
                 onClick={handleSearch}
-                className="px-4 py-2 bg-zinc-700 hover:bg-zinc-600 text-white rounded text-sm"
+                className="px-4 py-2 bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white rounded text-sm shadow-lg"
               >
                 <MagnifyingGlass size={16} />
               </button>
@@ -153,7 +153,7 @@ export default function WooProducts() {
             <select
               value={filterFulfillment}
               onChange={(e) => setFilterFulfillment(e.target.value)}
-              className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded text-white text-sm"
+              className="w-full px-3 py-2 bg-blue-950/30 border-2 border-blue-500/40 rounded text-white text-sm focus:border-blue-400 focus:outline-none"
             >
               <option value="">Tous types</option>
               <option value="dropshipping">Dropshipping</option>
@@ -165,7 +165,7 @@ export default function WooProducts() {
             <select
               value={filterMapping}
               onChange={(e) => setFilterMapping(e.target.value)}
-              className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded text-white text-sm"
+              className="w-full px-3 py-2 bg-blue-950/30 border-2 border-blue-500/40 rounded text-white text-sm focus:border-blue-400 focus:outline-none"
             >
               <option value="">Tous</option>
               <option value="mapped">Mappés</option>
@@ -206,12 +206,17 @@ export default function WooProducts() {
       {/* Products Table */}
       <Card className="overflow-x-auto">
         {loading ? (
-          <div className="text-center py-12 text-zinc-500">Chargement...</div>
+          <div className="text-center py-12 text-blue-400 font-medium">Chargement...</div>
         ) : products.length === 0 ? (
           <div className="text-center py-12">
-            <Package size={48} className="mx-auto mb-3 text-zinc-600" />
-            <p className="text-zinc-400 mb-4">
-              Aucun produit. Cliquez sur "Synchroniser WooCommerce" pour importer vos produits.
+            <div className="inline-block p-6 bg-blue-500/10 rounded-full mb-4">
+              <Package size={48} className="text-blue-400" />
+            </div>
+            <p className="text-white font-medium mb-2 text-lg">
+              Aucun produit trouvé
+            </p>
+            <p className="text-blue-300 mb-4">
+              Cliquez sur "Synchroniser WooCommerce" pour importer vos produits.
             </p>
           </div>
         ) : (
