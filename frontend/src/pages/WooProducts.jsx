@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { Card } from "../components/Bits";
 import {
   Package, ArrowsClockwise, LinkSimple, Pencil, Trash, ShoppingCart,
-  TrendUp, Clock, CurrencyEur, Check, X, MagnifyingGlass
+  TrendUp, Clock, CurrencyEur, Check, X, MagnifyingGlass, CaretUp, CaretDown
 } from "@phosphor-icons/react";
 import api from "../lib/api";
 import { toast } from "sonner";
@@ -248,7 +248,11 @@ export default function WooProducts() {
                         />
                       )}
                       <div className="flex-1 min-w-0">
-                        <div className="text-white! font-black text-lg leading-tight truncate drop-shadow-lg" style={{color: 'white !important'}}>
+                        <div 
+                          className="text-white! font-black text-lg leading-tight truncate drop-shadow-lg cursor-help" 
+                          style={{color: 'white !important'}}
+                          title={product.name || "Sans nom"}
+                        >
                           {product.name || <span className="text-yellow-300! italic font-black text-lg" style={{color: '#fde047 !important'}}>Sans nom</span>}
                         </div>
                         {product.type === "variable" && (
@@ -486,6 +490,40 @@ function MapSupplierModal({ product, onClose, onSuccess }) {
     }
   };
 
+  const handleReorderSupplier = async (supplierProductId, newPriority, currentPriority) => {
+    // Confirmation if changing to/from principal
+    if (currentPriority === 1 || newPriority === 1) {
+      if (!window.confirm(`Voulez-vous vraiment changer le fournisseur ${newPriority === 1 ? 'principal' : 'alternatif'} ?`)) {
+        return;
+      }
+    }
+
+    try {
+      const response = await api.put(`/woocommerce/products/${product.id}/reorder-suppliers`, {
+        supplier_product_id: supplierProductId,
+        new_priority: newPriority,
+        confirmed: true
+      });
+
+      if (response.data.confirmation_required) {
+        if (window.confirm(response.data.message)) {
+          await api.put(`/woocommerce/products/${product.id}/reorder-suppliers`, {
+            supplier_product_id: supplierProductId,
+            new_priority: newPriority,
+            confirmed: true
+          });
+          toast.success("✅ Priorité modifiée !");
+          onSuccess();
+        }
+      } else {
+        toast.success(response.data.message);
+        onSuccess();
+      }
+    } catch (e) {
+      toast.error(e.response?.data?.detail || "Erreur");
+    }
+  };
+
   const handleRemoveSupplier = async (supplierProductId) => {
     if (!window.confirm("Retirer ce fournisseur ?")) return;
     try {
@@ -588,28 +626,54 @@ function MapSupplierModal({ product, onClose, onSuccess }) {
                     {existingMappings.map((mapping, idx) => (
                       <div
                         key={idx}
-                        className="flex items-center justify-between p-3 bg-zinc-800/50 border border-zinc-700 rounded"
+                        className="flex items-center justify-between p-3 bg-zinc-800/50 border border-zinc-700 rounded hover:bg-zinc-800/70 transition"
                       >
-                        <div className="flex items-center gap-3">
-                          <span className={`px-2 py-1 rounded text-xs font-bold ${
+                        <div className="flex items-center gap-3 flex-1">
+                          <span className={`px-3 py-1.5 rounded-lg text-xs font-bold shadow ${
                             mapping.priority === 1
-                              ? "bg-blue-500/20 text-blue-400 border border-blue-500/40"
-                              : "bg-zinc-700 text-zinc-300"
+                              ? "bg-gradient-to-r from-blue-500 to-blue-600 text-white border-2 border-blue-300"
+                              : "bg-gradient-to-r from-orange-500 to-orange-600 text-white border-2 border-orange-300"
                           }`}>
-                            {mapping.priority === 1 ? "Principal" : `Alternatif ${mapping.priority - 1}`}
+                            {mapping.priority === 1 ? "★ Principal" : `${mapping.priority}. Alternatif`}
                           </span>
-                          <div>
-                            <div className="text-white font-semibold text-sm">{mapping.supplierName || "Fournisseur"}</div>
-                            <div className="text-zinc-400 text-xs">{mapping.fulfillmentType === "dropshipping" ? "Dropshipping" : "Stock"}</div>
+                          <div className="flex-1">
+                            <div className="text-white font-bold text-sm">{mapping.supplierName || "Fournisseur"}</div>
+                            <div className="text-zinc-400 text-xs mt-0.5">{mapping.fulfillmentType === "dropshipping" ? "🚚 Dropshipping" : "📦 Stock"}</div>
                           </div>
                         </div>
-                        <button
-                          onClick={() => handleRemoveSupplier(mapping.supplierProductId)}
-                          className="p-1.5 hover:bg-zinc-700 rounded text-red-400"
-                          title="Retirer"
-                        >
-                          <X size={18} weight="bold" />
-                        </button>
+                        
+                        <div className="flex items-center gap-2">
+                          {/* Move Up Button */}
+                          {mapping.priority > 1 && (
+                            <button
+                              onClick={() => handleReorderSupplier(mapping.supplierProductId, mapping.priority - 1, mapping.priority)}
+                              className="p-2 bg-blue-600 hover:bg-blue-700 rounded-lg text-white shadow transition"
+                              title="Monter la priorité"
+                            >
+                              <CaretUp size={16} weight="bold" />
+                            </button>
+                          )}
+                          
+                          {/* Move Down Button */}
+                          {mapping.priority < existingMappings.length && (
+                            <button
+                              onClick={() => handleReorderSupplier(mapping.supplierProductId, mapping.priority + 1, mapping.priority)}
+                              className="p-2 bg-blue-600 hover:bg-blue-700 rounded-lg text-white shadow transition"
+                              title="Descendre la priorité"
+                            >
+                              <CaretDown size={16} weight="bold" />
+                            </button>
+                          )}
+                          
+                          {/* Remove Button */}
+                          <button
+                            onClick={() => handleRemoveSupplier(mapping.supplierProductId)}
+                            className="p-2 bg-red-600 hover:bg-red-700 rounded-lg text-white shadow transition"
+                            title="Retirer ce fournisseur"
+                          >
+                            <X size={16} weight="bold" />
+                          </button>
+                        </div>
                       </div>
                     ))}
                   </div>

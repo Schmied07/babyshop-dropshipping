@@ -2143,6 +2143,92 @@ async def remove_supplier_mapping(
     return {"success": True, "message": "Mapping fournisseur supprimé"}
 
 
+@app.put("/api/woocommerce/products/{product_id}/reorder-suppliers")
+async def reorder_supplier_mappings(
+    product_id: str,
+    payload: dict,  # {supplier_product_id: str, new_priority: int}
+    current=Depends(get_current_user)
+):
+    """Change the priority of a supplier mapping (reorder)."""
+    supplier_product_id = payload.get("supplier_product_id")
+    new_priority = payload.get("new_priority")
+    
+    if not supplier_product_id or new_priority is None:
+        raise HTTPException(400, "supplier_product_id et new_priority requis")
+    
+    # Get product
+    woo_product = await db.woo_products.find_one(scope_q(current, {"_id": oid(product_id)}))
+    if not woo_product:
+        raise HTTPException(404, "Produit WooCommerce non trouvé")
+    
+    mappings = woo_product.get("supplierMappings", [])
+    if not mappings:
+        raise HTTPException(400, "Aucun mapping à réorganiser")
+    
+    # Find the mapping to move
+    target_mapping = None
+    target_idx = None
+    for idx, m in enumerate(mappings):
+        if m.get("supplierProductId") == supplier_product_id:
+            target_mapping = m
+            target_idx = idx
+            break
+    
+    if target_mapping is None:
+        raise HTTPException(404, "Mapping non trouvé")
+    
+    old_priority = target_mapping.get("priority", 1)
+    
+    # Validate new priority
+    if new_priority < 1 or new_priority > len(mappings):
+        raise HTTPException(400, f"Priorité invalide (doit être entre 1 et {len(mappings)})")
+    
+    if old_priority == new_priority:
+        return {"success": True, "message": "Aucun changement"}
+    
+    # Confirmation required if changing to/from priority 1 (principal)
+    if (old_priority == 1 or new_priority == 1) and not payload.get("confirmed", False):
+        return {
+            "success": False,
+            "confirmation_required": True,
+            "message": "Voulez-vous vraiment changer le fournisseur principal ?"
+        }
+    
+    # Reorder logic: shift priorities
+    if new_priority < old_priority:
+        # Moving up (e.g., 3 → 1): shift others down
+        for m in mappings:
+            p = m.get("priority", 1)
+            if new_priority <= p < old_priority:
+                m["priority"] = p + 1
+    else:
+        # Moving down (e.g., 1 → 3): shift others up
+        for m in mappings:
+            p = m.get("priority", 1)
+            if old_priority < p <= new_priority:
+                m["priority"] = p - 1
+    
+    # Set new priority
+    target_mapping["priority"] = new_priority
+    
+    # Update in DB
+    await db.woo_products.update_one(
+        {"_id": oid(product_id)},
+        {
+            "$set": {
+                "supplierMappings": mappings,
+                "updatedAt": utc_now()
+            }
+        }
+    )
+    
+    return {
+        "success": True,
+        "message": f"Priorité changée de {old_priority} à {new_priority}",
+        "new_priority": new_priority
+    }
+
+
 @app.post("/api/woocommerce/products/{product_id}/set-asin")
 async def set_product_asin(
     product_id: str,
