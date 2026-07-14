@@ -1704,6 +1704,15 @@ async def _get_woocommerce_credentials(current: dict) -> dict:
             "Configurez votre boutique dans 'Boutique WooCommerce'."
         )
     
+    # Clean URL: remove /wp-json/wc/v3 suffix if present (added automatically by our code)
+    api_url = api_url.rstrip('/')
+    if api_url.endswith('/wp-json/wc/v3'):
+        api_url = api_url[:-len('/wp-json/wc/v3')]
+    elif api_url.endswith('/wp-json/wc'):
+        api_url = api_url[:-len('/wp-json/wc')]
+    elif api_url.endswith('/wp-json'):
+        api_url = api_url[:-len('/wp-json')]
+    
     if not api_url.startswith(("http://", "https://")):
         raise HTTPException(
             400, 
@@ -1719,6 +1728,46 @@ async def _get_woocommerce_credentials(current: dict) -> dict:
         )
     
     return {
+
+
+@app.post("/api/woocommerce/products/test-connection")
+async def test_woocommerce_connection(current=Depends(get_current_user)):
+    """Test WooCommerce API connection."""
+    try:
+        creds = await _get_woocommerce_credentials(current)
+        
+        # Try to fetch 1 product to test connection
+        response = await wc.wc_get("/wp-json/wc/v3/products", {"per_page": 1}, creds)
+        
+        if response.status_code == 200:
+            products = response.json()
+            return {
+                "success": True,
+                "message": "Connexion réussie !",
+                "products_count": len(products),
+                "url": creds["url"]
+            }
+        elif response.status_code == 401:
+            return {
+                "success": False,
+                "error": "Authentification échouée",
+                "message": "Vérifiez vos clés API (Consumer Key/Secret). Elles n'ont peut-être pas les bonnes permissions.",
+                "details": response.json() if response.text else None
+            }
+        else:
+            return {
+                "success": False,
+                "error": f"Erreur HTTP {response.status_code}",
+                "message": response.text[:500]
+            }
+    except Exception as e:
+        return {
+            "success": False,
+            "error": "Erreur de connexion",
+            "message": str(e)
+        }
+
+
         "url": api_url,
         "key": api_key,
         "secret": api_secret,

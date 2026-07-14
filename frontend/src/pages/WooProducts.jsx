@@ -94,15 +94,35 @@ export default function WooProducts() {
             Gérez vos produits WooCommerce et mappez-les aux fournisseurs
           </p>
         </div>
-        <button
-          onClick={handleSync}
-          disabled={syncing}
-          className="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-zinc-700 text-white rounded text-sm font-medium flex items-center gap-2"
-          data-testid="sync-btn"
-        >
-          <ArrowsClockwise size={16} className={syncing ? "animate-spin" : ""} />
-          {syncing ? "Synchronisation..." : "Synchroniser WooCommerce"}
-        </button>
+        <div className="flex gap-2">
+          <button
+            onClick={handleSync}
+            disabled={syncing}
+            className="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-zinc-700 text-white rounded text-sm font-medium flex items-center gap-2"
+            data-testid="sync-btn"
+          >
+            <ArrowsClockwise size={16} className={syncing ? "animate-spin" : ""} />
+            {syncing ? "Synchronisation..." : "Synchroniser WooCommerce"}
+          </button>
+          <button
+            onClick={async () => {
+              try {
+                const r = await api.post("/woocommerce/products/test-connection");
+                if (r.data.success) {
+                  toast.success(r.data.message);
+                } else {
+                  toast.error(r.data.message || r.data.error);
+                }
+              } catch (e) {
+                toast.error(e.response?.data?.detail || "Erreur de test");
+              }
+            }}
+            className="px-4 py-2 bg-zinc-700 hover:bg-zinc-600 text-white rounded text-sm font-medium flex items-center gap-2"
+          >
+            <Check size={16} />
+            Tester connexion
+          </button>
+        </div>
       </div>
 
       {/* Filters */}
