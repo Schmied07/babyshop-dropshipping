@@ -19,6 +19,7 @@ from models import (  # noqa: E402
     Supplier, Product, SupplierProduct, PricingRule, Order,
     Notification, ProductMapping, UserLogin, UserRegister, UserPublic,
     WooProduct, WooProductMapRequest, WooProductUpdateRequest,
+    SupplierMapping, AmazonData,
     utc_now,
 )
 from auth import (  # noqa: E402
@@ -2042,6 +2043,200 @@ async def unmap_supplier_from_woo_product(product_id: str, current=Depends(get_c
         raise HTTPException(404, "Produit non trouvé")
     
     return {"success": True, "message": "Mapping supprimé"}
+
+
+@app.post("/api/woocommerce/products/{product_id}/add-supplier-mapping")
+async def add_supplier_mapping(
+    product_id: str,
+    payload: WooProductMapRequest,
+    current=Depends(get_current_user)
+):
+    """Add a new supplier mapping (for multiple suppliers support)."""
+    # Get WooCommerce product
+    woo_product = await db.woo_products.find_one(scope_q(current, {"_id": oid(product_id)}))
+    if not woo_product:
+        raise HTTPException(404, "Produit WooCommerce non trouvé")
+    
+    # Get supplier product
+    supplier_product = await db.supplier_products.find_one(
+        scope_q(current, {"_id": oid(payload.supplier_product_id)})
+    )
+    if not supplier_product:
+        raise HTTPException(404, "Produit fournisseur non trouvé")
+    
+    # Check if already mapped
+    existing_mappings = woo_product.get("supplierMappings", [])
+    if any(m.get("supplierProductId") == payload.supplier_product_id for m in existing_mappings):
+        raise HTTPException(400, "Ce fournisseur est déjà mappé à ce produit")
+    
+    # Determine priority (1 for first, increment for others)
+    max_priority = max([m.get("priority", 0) for m in existing_mappings], default=0)
+    new_priority = max_priority + 1
+    
+    # Create new mapping
+    new_mapping = SupplierMapping(
+        supplierProductId=payload.supplier_product_id,
+        supplierId=supplier_product.get("supplierId"),
+        priority=new_priority,
+        fulfillmentType=payload.fulfillment_type,
+        marginMode=payload.margin_mode,
+        targetMarginPct=payload.target_margin_pct,
+        extraCosts=payload.extra_costs,
+        isActive=True,
+        addedAt=utc_now()
+    ).model_dump()
+    
+    # Update product
+    await db.woo_products.update_one(
+        {"_id": oid(product_id)},
+        {
+            "$push": {"supplierMappings": new_mapping},
+            "$set": {"updatedAt": utc_now()}
+        }
+    )
+    
+    return {"success": True, "message": "Fournisseur ajouté avec succès", "priority": new_priority}
+
+
+@app.delete("/api/woocommerce/products/{product_id}/remove-supplier-mapping/{supplier_product_id}")
+async def remove_supplier_mapping(
+    product_id: str,
+    supplier_product_id: str,
+    current=Depends(get_current_user)
+):
+    """Remove a specific supplier mapping."""
+    result = await db.woo_products.update_one(
+        scope_q(current, {"_id": oid(product_id)}),
+        {
+            "$pull": {"supplierMappings": {"supplierProductId": supplier_product_id}},
+            "$set": {"updatedAt": utc_now()}
+        }
+    )
+    
+    if result.matched_count == 0:
+        raise HTTPException(404, "Produit non trouvé")
+    
+    return {"success": True, "message": "Mapping fournisseur supprimé"}
+
+
+@app.post("/api/woocommerce/products/{product_id}/set-asin")
+async def set_product_asin(
+    product_id: str,
+    payload: dict,  # {asin: str, marketplace: str}
+    current=Depends(get_current_user)
+):
+    """Set Amazon ASIN for a WooCommerce product."""
+    asin = payload.get("asin", "").strip().upper()
+    marketplace = payload.get("marketplace", "fr").lower()
+    
+    if not asin:
+        raise HTTPException(400, "ASIN requis")
+    
+    # Validate ASIN format (10 characters, alphanumeric)
+    if len(asin) != 10 or not asin.isalnum():
+        raise HTTPException(400, "ASIN invalide (doit être 10 caractères alphanumériques)")
+    
+    # Get WooCommerce product
+    woo_product = await db.woo_products.find_one(scope_q(current, {"_id": oid(product_id)}))
+    if not woo_product:
+        raise HTTPException(404, "Produit WooCommerce non trouvé")
+    
+    # Create Amazon data structure
+    amazon_data = AmazonData(
+        asin=asin,
+        marketplace=marketplace,
+        lastChecked=None
+    ).model_dump()
+    
+    # Update product
+    await db.woo_products.update_one(
+        {"_id": oid(product_id)},
+        {
+            "$set": {
+                "amazonData": amazon_data,
+                "updatedAt": utc_now()
+            }
+        }
+    )
+    
+    return {"success": True, "message": "ASIN enregistré", "asin": asin}
+
+
+@app.get("/api/woocommerce/products/{product_id}/amazon-comparison")
+async def get_amazon_comparison(product_id: str, current=Depends(get_current_user)):
+    """Get Amazon price comparison via Keepa for a product."""
+    # Get WooCommerce product
+    woo_product = await db.woo_products.find_one(scope_q(current, {"_id": oid(product_id)}))
+    if not woo_product:
+        raise HTTPException(404, "Produit WooCommerce non trouvé")
+    
+    amazon_data = woo_product.get("amazonData")
+    if not amazon_data or not amazon_data.get("asin"):
+        raise HTTPException(400, "Aucun ASIN configuré pour ce produit")
+    
+    asin = amazon_data["asin"]
+    marketplace = amazon_data.get("marketplace", "fr")
+    
+    # Get user's Keepa API key
+    keepa_key = await keepa_client.get_user_keepa_key(current, db)
+    if not keepa_key:
+        raise HTTPException(400, "Clé API Keepa non configurée")
+    
+    # Fetch from Keepa
+    try:
+        keepa_data = await keepa_client.search_asin(asin, marketplace, keepa_key, db)
+        
+        if not keepa_data:
+            raise HTTPException(404, "ASIN non trouvé sur Amazon")
+        
+        # Extract relevant data
+        current_price = keepa_data.get("currentPrice")
+        avg_price_30d = keepa_data.get("avgPrice30d")
+        
+        # Calculate margin if aligned with Amazon
+        woo_price = float(woo_product.get("price", 0))
+        supplier_cost = woo_product.get("supplierCost", 0)
+        
+        amazon_margin = None
+        amazon_margin_pct = None
+        
+        if current_price and supplier_cost:
+            amazon_margin = current_price - supplier_cost
+            amazon_margin_pct = (amazon_margin / current_price) * 100 if current_price > 0 else 0
+        
+        # Update cached Amazon data
+        await db.woo_products.update_one(
+            {"_id": oid(product_id)},
+            {
+                "$set": {
+                    "amazonData.currentPrice": current_price,
+                    "amazonData.avgPrice30d": avg_price_30d,
+                    "amazonData.salesRank": keepa_data.get("salesRank"),
+                    "amazonData.rating": keepa_data.get("rating"),
+                    "amazonData.lastChecked": utc_now(),
+                    "amazonMargin": amazon_margin,
+                    "amazonMarginPct": amazon_margin_pct,
+                    "updatedAt": utc_now()
+                }
+            }
+        )
+        
+        return {
+            "success": True,
+            "asin": asin,
+            "marketplace": marketplace,
+            "amazonPrice": current_price,
+            "avgPrice30d": avg_price_30d,
+            "yourPrice": woo_price,
+            "supplierCost": supplier_cost,
+            "amazonMargin": amazon_margin,
+            "amazonMarginPct": amazon_margin_pct,
+            "salesRank": keepa_data.get("salesRank"),
+            "rating": keepa_data.get("rating"),
+        }
+    
+    except Exception as e:
+        raise HTTPException(500, f"Erreur Keepa: {str(e)}")
 
 
 @app.put("/api/woocommerce/products/{product_id}")

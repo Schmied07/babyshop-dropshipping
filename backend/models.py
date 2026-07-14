@@ -254,7 +254,35 @@ class WooProductVariation(BaseModel):
     stock_quantity: Optional[int] = None
     attributes: List[dict] = []
     image: Optional[dict] = None
+
+
+class SupplierMapping(BaseModel):
+    """Mapping d'un produit WooCommerce vers un fournisseur."""
+    supplierProductId: str
+    supplierId: str
+    priority: int = 1  # 1 = principal, 2+ = alternatifs
+    fulfillmentType: str = "dropshipping"  # dropshipping | stock
+    marginMode: str = "auto"  # auto | manual
+    targetMarginPct: Optional[float] = None
+    extraCosts: float = 0.0
+    isActive: bool = True  # Peut être désactivé temporairement
+    addedAt: datetime = Field(default_factory=utc_now)
+
+
+class AmazonData(BaseModel):
+    """Données Amazon/Keepa pour comparaison."""
+    asin: str
+    marketplace: str = "fr"  # fr, de, it, es, uk, etc.
+    currentPrice: Optional[float] = None
+    avgPrice30d: Optional[float] = None
+    minPrice90d: Optional[float] = None
+    rating: Optional[float] = None
+    reviewCount: Optional[int] = None
+    salesRank: Optional[int] = None
+    availability: Optional[str] = None
+    lastChecked: Optional[datetime] = None
     
+
 class WooProduct(BaseDocument):
     """WooCommerce product stored locally with supplier mapping."""
     wooProductId: int  # WooCommerce product ID
@@ -276,20 +304,26 @@ class WooProduct(BaseDocument):
     tags: List[dict] = []
     variations: List[WooProductVariation] = []
     
-    # Supplier mapping
-    supplierProductId: Optional[str] = None  # ID du produit fournisseur mappé
-    supplierId: Optional[str] = None
+    # Supplier mappings (multiple)
+    supplierMappings: List[SupplierMapping] = []
     
-    # Business logic
-    fulfillmentType: str = "dropshipping"  # dropshipping | stock
-    marginMode: str = "auto"  # auto | manual
-    targetMarginPct: Optional[float] = None  # Si mode manuel
-    extraCosts: float = 0.0  # Frais supplémentaires (stockage, réexpédition)
+    # Legacy fields (keep for backward compatibility)
+    supplierProductId: Optional[str] = None
+    supplierId: Optional[str] = None
+    fulfillmentType: str = "dropshipping"
+    marginMode: str = "auto"
+    targetMarginPct: Optional[float] = None
+    extraCosts: float = 0.0
+    
+    # Amazon/Keepa integration
+    amazonData: Optional[AmazonData] = None
     
     # Calculated fields
     supplierCost: Optional[float] = None
     calculatedMargin: Optional[float] = None
     calculatedMarginPct: Optional[float] = None
+    amazonMargin: Optional[float] = None  # Marge si aligné sur Amazon
+    amazonMarginPct: Optional[float] = None
     
     # Metadata
     ownerId: Optional[str] = None
@@ -305,6 +339,17 @@ class WooProductMapRequest(BaseModel):
     margin_mode: str = "auto"  # auto | manual
     target_margin_pct: Optional[float] = None
     extra_costs: float = 0.0
+
+
+class WooProductMultiMapRequest(BaseModel):
+    """Request to add multiple supplier mappings."""
+    mappings: List[dict]  # Liste de {supplier_product_id, priority, fulfillment_type, etc.}
+
+
+class WooProductSetAsinRequest(BaseModel):
+    """Request to set Amazon ASIN for product."""
+    asin: str
+    marketplace: str = "fr"  # fr, de, it, es, uk
 
 
 class WooProductUpdateRequest(BaseModel):
