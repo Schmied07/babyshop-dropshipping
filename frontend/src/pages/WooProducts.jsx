@@ -236,7 +236,7 @@ export default function WooProducts() {
             </thead>
             <tbody>
               {products.map((product) => (
-                <tr key={product.id} className="border-b border-zinc-800 hover:bg-zinc-800/50">
+                <tr key={product.id} className="border-b-2 border-blue-700 hover:bg-blue-700/30 bg-blue-900/20">
                   {/* Produit */}
                   <td className="p-3 max-w-xs">
                     <div className="flex items-center gap-2">
@@ -248,8 +248,8 @@ export default function WooProducts() {
                         />
                       )}
                       <div className="flex-1 min-w-0">
-                        <div className="text-white font-bold text-sm leading-tight truncate">
-                          {product.name || <span className="text-blue-400 italic">Sans nom</span>}
+                        <div className="text-white font-black text-lg leading-tight truncate drop-shadow-lg">
+                          {product.name || <span className="text-yellow-300 italic font-black text-lg">Sans nom</span>}
                         </div>
                         {product.type === "variable" && (
                           <div className="text-blue-400 text-[10px] font-bold mt-0.5 bg-blue-500/10 px-1.5 py-0.5 rounded inline-block">
@@ -262,14 +262,14 @@ export default function WooProducts() {
                   
                   {/* SKU */}
                   <td className="p-3">
-                    <div className="text-white text-[11px] font-mono font-bold truncate bg-blue-500/10 px-2 py-1 rounded inline-block">
+                    <div className="text-white text-base font-mono font-black truncate bg-blue-700 px-3 py-2 rounded-lg inline-block border-2 border-blue-400 shadow-lg">
                       {product.sku || "-"}
                     </div>
                   </td>
                   
                   {/* Prix */}
                   <td className="p-3 text-right">
-                    <div className="text-white font-bold text-sm">
+                    <div className="text-white font-black text-2xl drop-shadow-lg">
                       {fmtEUR(parseFloat(product.price || 0))}
                     </div>
                   </td>
@@ -281,12 +281,12 @@ export default function WooProducts() {
                         <span className="px-2 py-1 rounded-md text-[10px] font-bold bg-gradient-to-r from-blue-500 to-blue-600 text-white shadow">
                           {product.supplierMappings.length}
                         </span>
-                        <span className="text-white text-[10px] font-semibold truncate">fournisseur{product.supplierMappings.length > 1 ? 's' : ''}</span>
+                        <span className="text-white text-base font-black truncate drop-shadow">fournisseur{product.supplierMappings.length > 1 ? 's' : ''}</span>
                       </div>
                     ) : product.supplierProduct ? (
                       <div className="text-[10px] text-blue-400 font-semibold truncate">Mappé</div>
                     ) : (
-                      <span className="text-blue-400 text-[10px] font-medium">Non mappé</span>
+                      <span className="text-yellow-300 text-base font-black">Non mappé</span>
                     )}
                   </td>
                   
