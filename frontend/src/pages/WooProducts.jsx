@@ -248,8 +248,8 @@ export default function WooProducts() {
                         />
                       )}
                       <div className="flex-1 min-w-0">
-                        <div className="text-white font-black text-lg leading-tight truncate drop-shadow-lg">
-                          {product.name || <span className="text-yellow-300 italic font-black text-lg">Sans nom</span>}
+                        <div className="text-white! font-black text-lg leading-tight truncate drop-shadow-lg" style={{color: 'white !important'}}>
+                          {product.name || <span className="text-yellow-300! italic font-black text-lg" style={{color: '#fde047 !important'}}>Sans nom</span>}
                         </div>
                         {product.type === "variable" && (
                           <div className="text-blue-400 text-[10px] font-bold mt-0.5 bg-blue-500/10 px-1.5 py-0.5 rounded inline-block">
@@ -262,14 +262,14 @@ export default function WooProducts() {
                   
                   {/* SKU */}
                   <td className="p-3">
-                    <div className="text-white text-base font-mono font-black truncate bg-blue-700 px-3 py-2 rounded-lg inline-block border-2 border-blue-400 shadow-lg">
+                    <div className="text-white! text-base font-mono font-black truncate bg-blue-700 px-3 py-2 rounded-lg inline-block border-2 border-blue-400 shadow-lg" style={{color: 'white !important'}}>
                       {product.sku || "-"}
                     </div>
                   </td>
                   
                   {/* Prix */}
                   <td className="p-3 text-right">
-                    <div className="text-white font-black text-2xl drop-shadow-lg">
+                    <div className="text-white! font-black text-2xl drop-shadow-lg" style={{color: 'white !important'}}>
                       {fmtEUR(parseFloat(product.price || 0))}
                     </div>
                   </td>
@@ -286,7 +286,7 @@ export default function WooProducts() {
                     ) : product.supplierProduct ? (
                       <div className="text-[10px] text-blue-400 font-semibold truncate">Mappé</div>
                     ) : (
-                      <span className="text-yellow-300 text-base font-black">Non mappé</span>
+                      <span className="text-yellow-300! text-base font-black" style={{color: '#fde047 !important'}}>Non mappé</span>
                     )}
                   </td>
                   
