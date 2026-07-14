@@ -1,0 +1,51 @@
+{
+  "summary": "Tested /produits-boutique with QA tester login. User complaint 'rien changé' is CONFIRMED. Filters card renders WHITE background (not blue) because .card CSS class overrides Tailwind bg-blue-900/20 with higher specificity. Search input and selects appear grey/washed-out due to transparent Tailwind bg (rgba 23,37,84,0.3) over white card. Requested class changes (bg-blue-900/60, border-blue-400) were NOT applied to the code — filters card still has bg-blue-900/20 border-blue-500/30, inputs still have bg-blue-950/30 border-blue-500/40. Green 'Tester connexion' button works correctly. Table header could not be verified (0 products). 9 zinc classes still present (table row borders, text-zinc-400/500).",
+  "tested_scope": ["frontend"],
+  "passed": [
+    "Login with qa.tester@europadrop-qa.fr works",
+    "Navigation to /produits-boutique loads without JS errors",
+    "'Tester connexion' button IS green gradient (linear-gradient rgb(22,163,74) → rgb(21,128,61))",
+    "'Synchroniser WooCommerce' button IS blue (bg-blue-600)"
+  ],
+  "failed": [
+    {
+      "area": "Filters card background",
+      "issue": "Renders WHITE (rgb(255,255,255)) instead of blue. The global .card CSS class (likely in App.css/index.css) has higher specificity than Tailwind's bg-blue-900/20 and overrides it, making the entire filters block appear grey/white in the screenshot.",
+      "evidence": "getComputedStyle(filtersCard).backgroundColor = 'rgb(255, 255, 255)' despite classes 'card bg-blue-900/20 border-blue-500/30'. Screenshot shows white card with barely-visible light-grey inputs.",
+      "priority": "HIGH"
+    },
+    {
+      "area": "Requested class changes not applied in code",
+      "issue": "The review request states the code was updated to bg-blue-900/60 and border-blue-400, but WooProducts.jsx still shows bg-blue-900/20 / border-blue-500/30 for the filters card and bg-blue-950/30 / border-blue-500/40 for inputs/selects. Either the edit was not saved or was reverted.",
+      "evidence": "WooProducts.jsx line 131: `<Card className=\"bg-blue-900/20 border-blue-500/30\">`; lines 141,156,168 use `bg-blue-950/30 border-2 border-blue-500/40`.",
+      "priority": "HIGH"
+    },
+    {
+      "area": "Search input & selects appear grey",
+      "issue": "Even ignoring the .card override, bg-blue-950/30 (30% opacity) is far too transparent to look 'vif/professionnel'. On a white/light card they render as pale grey — this is exactly what the user sees.",
+      "evidence": "Screenshot: search box and 'Tous types'/'Tous' selects look light grey, indistinguishable from a disabled state.",
+      "priority": "HIGH"
+    },
+    {
+      "area": "Residual zinc classes",
+      "issue": "9 elements still use zinc grey classes (border-zinc-800, text-zinc-400, text-zinc-500) — visible in table row borders and secondary text.",
+      "evidence": "document.querySelectorAll('[class*=\"zinc\"]').length === 9. Samples: 'border-zinc-800', 'text-zinc-400', 'text-zinc-500'.",
+      "priority": "MEDIUM"
+    },
+    {
+      "area": "Table header (bleu vif gradient)",
+      "issue": "Could NOT verify — QA tester has 0 products so <thead> is not rendered.",
+      "evidence": "thead selector returned null; empty-state message 'Aucun produit trouvé' shown instead.",
+      "priority": "LOW"
+    }
+  ],
+  "action_items": [
+    "ROOT CAUSE: Find the global `.card` CSS rule (App.css or index.css) that forces `background-color: white` and either remove it or make the Tailwind class win (e.g., use `!bg-blue-900/60` with important, or override the .card default, or drop the `.card` class from this specific Card and use Tailwind only).",
+    "Actually apply the promised edits: change `bg-blue-900/20 border-blue-500/30` → `bg-blue-900/60 border-blue-400` on the filters Card (line 131), and `bg-blue-950/30 border-blue-500/40` → `bg-blue-900/60 border-blue-400` on the input + both selects (lines 141, 156, 168). Verify the file is saved and the frontend was rebuilt.",
+    "Replace remaining zinc-* classes (border-zinc-800, text-zinc-400, text-zinc-500) with blue equivalents (border-blue-800/50, text-blue-300/400) in WooProducts.jsx table rows and 'Non mappé' text.",
+    "Consider adding a seed of 1-2 products for the QA tester so the table header (bleu vif gradient) can actually be verified by the tester."
+  ],
+  "success_rate": {"backend": "not tested", "frontend": "25%"},
+  "retest_needed": true,
+  "full_testing_deferred": true
+}
