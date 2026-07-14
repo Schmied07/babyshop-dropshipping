@@ -277,14 +277,29 @@ export default function WooProducts() {
                   {/* Fournisseur (simplifié) */}
                   <td className="p-3">
                     {product.supplierMappings && product.supplierMappings.length > 0 ? (
-                      <div className="flex items-center gap-1.5">
-                        <span className="px-2 py-1 rounded-md text-[10px] font-bold bg-gradient-to-r from-blue-500 to-blue-600 text-white shadow">
-                          {product.supplierMappings.length}
-                        </span>
-                        <span className="text-white text-base font-black truncate drop-shadow">fournisseur{product.supplierMappings.length > 1 ? 's' : ''}</span>
+                      <div className="space-y-1">
+                        {product.supplierMappings.slice(0, 2).map((mapping, idx) => (
+                          <div key={idx} className="flex items-center gap-1.5">
+                            <span className={`px-2 py-0.5 rounded-md text-[9px] font-black shadow-lg ${
+                              mapping.priority === 1
+                                ? "bg-blue-600 text-white"
+                                : "bg-orange-500 text-white"
+                            }`} style={{color: 'white !important'}}>
+                              {mapping.priority === 1 ? "★" : mapping.priority}
+                            </span>
+                            <span className="text-white text-xs font-black truncate" style={{color: 'white !important'}}>
+                              {mapping.supplierName || "Fournisseur"}
+                            </span>
+                          </div>
+                        ))}
+                        {product.supplierMappings.length > 2 && (
+                          <div className="text-white text-[9px] font-bold pl-5" style={{color: 'white !important'}}>
+                            +{product.supplierMappings.length - 2}
+                          </div>
+                        )}
                       </div>
                     ) : product.supplierProduct ? (
-                      <div className="text-[10px] text-blue-400 font-semibold truncate">Mappé</div>
+                      <div className="text-[10px] text-white font-bold truncate" style={{color: 'white !important'}}>Mappé</div>
                     ) : (
                       <span className="text-yellow-300! text-base font-black" style={{color: '#fde047 !important'}}>Non mappé</span>
                     )}

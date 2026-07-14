@@ -1934,6 +1934,30 @@ async def get_woocommerce_products(
     
     # Enrich with supplier data and calculate margins
     for product in products:
+        # Enrich supplierMappings with supplier names
+        if product.get("supplierMappings"):
+            enriched_mappings = []
+            for mapping in product["supplierMappings"]:
+                # Get supplier product
+                supplier_product = await db.supplier_products.find_one({
+                    "_id": oid(mapping.get("supplierProductId"))
+                }, {"_id": 0, "name": 1, "supplierId": 1, "costPrice": 1})
+                
+                if supplier_product:
+                    # Get supplier name
+                    supplier = await db.suppliers.find_one({
+                        "_id": oid(supplier_product.get("supplierId"))
+                    }, {"_id": 0, "name": 1})
+                    
+                    mapping["supplierName"] = supplier.get("name", "Fournisseur inconnu") if supplier else "Fournisseur inconnu"
+                    mapping["supplierProductName"] = supplier_product.get("name", "")
+                    mapping["costPrice"] = supplier_product.get("costPrice", 0)
+                
+                enriched_mappings.append(mapping)
+            
+            product["supplierMappings"] = enriched_mappings
+        
+        # Legacy: Enrich old single supplier mapping
         if product.get("supplierProductId"):
             # Get supplier product
             supplier_product = await db.supplier_products.find_one({
