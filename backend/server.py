@@ -1678,6 +1678,386 @@ async def wc_regenerate_secret(request: Request, _=Depends(get_current_user)):
     }
 
 
+
+
+# ========== WOOCOMMERCE PRODUCTS MANAGEMENT ==========
+@app.post("/api/woocommerce/products/sync")
+async def sync_woocommerce_products(current=Depends(get_current_user)):
+    """Synchronize all products from WooCommerce to local database."""
+    # Get WooCommerce credentials
+    store_doc = await db.stores.find_one(scope_q(current))
+    if not store_doc:
+        raise HTTPException(404, "Aucune boutique WooCommerce configurée")
+    
+    creds = {
+        "url": store_doc.get("apiUrl"),
+        "key": store_doc.get("apiKey"),
+        "secret": store_doc.get("apiSecret"),
+    }
+    
+    synced_count = 0
+    updated_count = 0
+    error_count = 0
+    
+    try:
+        # Fetch all products from WooCommerce (paginated)
+        page = 1
+        per_page = 100
+        
+        while True:
+            response = await wc.wc_get("/wp-json/wc/v3/products", {
+                "page": page,
+                "per_page": per_page,
+                "status": "any"
+            }, creds)
+            
+            if response.status_code != 200:
+                raise HTTPException(400, f"Erreur WooCommerce: {response.text}")
+            
+            products = response.json()
+            if not products:
+                break
+            
+            for woo_product in products:
+                try:
+                    # Check if product already exists
+                    existing = await db.woo_products.find_one({
+                        "wooProductId": woo_product["id"],
+                        **scope_q(current)
+                    })
+                    
+                    # Prepare product data
+                    product_data = {
+                        "wooProductId": woo_product["id"],
+                        "sku": woo_product.get("sku", ""),
+                        "name": woo_product.get("name", ""),
+                        "slug": woo_product.get("slug", ""),
+                        "type": woo_product.get("type", "simple"),
+                        "status": woo_product.get("status", "publish"),
+                        "price": woo_product.get("price", "0"),
+                        "regular_price": woo_product.get("regular_price", "0"),
+                        "sale_price": woo_product.get("sale_price"),
+                        "stock_quantity": woo_product.get("stock_quantity"),
+                        "manage_stock": woo_product.get("manage_stock", False),
+                        "stock_status": woo_product.get("stock_status", "instock"),
+                        "description": woo_product.get("description", ""),
+                        "short_description": woo_product.get("short_description", ""),
+                        "images": woo_product.get("images", []),
+                        "categories": woo_product.get("categories", []),
+                        "tags": woo_product.get("tags", []),
+                        "lastSyncAt": utc_now(),
+                        "updatedAt": utc_now(),
+                    }
+                    
+                    # Handle variations for variable products
+                    if woo_product["type"] == "variable":
+                        # Fetch variations
+                        var_response = await wc.wc_get(
+                            f"/wp-json/wc/v3/products/{woo_product['id']}/variations",
+                            {"per_page": 100},
+                            creds
+                        )
+                        if var_response.status_code == 200:
+                            variations = var_response.json()
+                            product_data["variations"] = [
+                                {
+                                    "id": v["id"],
+                                    "sku": v.get("sku", ""),
+                                    "price": v.get("price", "0"),
+                                    "regular_price": v.get("regular_price", "0"),
+                                    "sale_price": v.get("sale_price"),
+                                    "stock_quantity": v.get("stock_quantity"),
+                                    "attributes": v.get("attributes", []),
+                                    "image": v.get("image"),
+                                }
+                                for v in variations
+                            ]
+                    
+                    if existing:
+                        # Update existing
+                        # Preserve supplier mapping if exists
+                        if existing.get("supplierProductId"):
+                            product_data["supplierProductId"] = existing["supplierProductId"]
+                            product_data["supplierId"] = existing.get("supplierId")
+                            product_data["fulfillmentType"] = existing.get("fulfillmentType", "dropshipping")
+                            product_data["marginMode"] = existing.get("marginMode", "auto")
+                            product_data["targetMarginPct"] = existing.get("targetMarginPct")
+                            product_data["extraCosts"] = existing.get("extraCosts", 0.0)
+                        
+                        await db.woo_products.update_one(
+                            {"_id": existing["_id"]},
+                            {"$set": product_data}
+                        )
+                        updated_count += 1
+                    else:
+                        # Create new
+                        product_data["ownerId"] = current.get("id")
+                        product_data["createdAt"] = utc_now()
+                        await db.woo_products.insert_one(product_data)
+                        synced_count += 1
+                        
+                except Exception as e:
+                    print(f"Error syncing product {woo_product.get('id')}: {e}")
+                    error_count += 1
+                    continue
+            
+            # Check if there are more pages
+            if len(products) < per_page:
+                break
+            page += 1
+        
+        return {
+            "success": True,
+            "synced": synced_count,
+            "updated": updated_count,
+            "errors": error_count,
+            "total": synced_count + updated_count,
+        }
+        
+    except Exception as e:
+        raise HTTPException(500, f"Erreur lors de la synchronisation: {str(e)}")
+
+
+@app.get("/api/woocommerce/products")
+async def get_woocommerce_products(
+    search: Optional[str] = None,
+    fulfillment_type: Optional[str] = None,
+    has_mapping: Optional[bool] = None,
+    current=Depends(get_current_user)
+):
+    """Get all WooCommerce products with optional filters."""
+    query = scope_q(current)
+    
+    if search:
+        query["$or"] = [
+            {"name": {"$regex": search, "$options": "i"}},
+            {"sku": {"$regex": search, "$options": "i"}},
+        ]
+    
+    if fulfillment_type:
+        query["fulfillmentType"] = fulfillment_type
+    
+    if has_mapping is not None:
+        if has_mapping:
+            query["supplierProductId"] = {"$exists": True, "$ne": None}
+        else:
+            query["$or"] = [
+                {"supplierProductId": {"$exists": False}},
+                {"supplierProductId": None}
+            ]
+    
+    products = await db.woo_products.find(query).sort("name", 1).to_list(None)
+    
+    # Enrich with supplier data and calculate margins
+    for product in products:
+        if product.get("supplierProductId"):
+            # Get supplier product
+            supplier_product = await db.supplier_products.find_one({
+                "_id": oid(product["supplierProductId"])
+            })
+            
+            if supplier_product:
+                product["supplierProduct"] = {
+                    "id": str(supplier_product["_id"]),
+                    "name": supplier_product.get("name", ""),
+                    "costPrice": supplier_product.get("costPrice", 0),
+                    "stock": supplier_product.get("stock", 0),
+                    "leadTimeDays": supplier_product.get("leadTimeDays", 0),
+                }
+                
+                # Calculate margin
+                woo_price = float(product.get("price", 0) or 0)
+                cost = supplier_product.get("costPrice", 0)
+                extra_costs = product.get("extraCosts", 0)
+                
+                if woo_price > 0 and cost > 0:
+                    margin = woo_price - cost - extra_costs
+                    margin_pct = (margin / woo_price) * 100
+                    
+                    product["calculatedMargin"] = round(margin, 2)
+                    product["calculatedMarginPct"] = round(margin_pct, 2)
+                    product["supplierCost"] = cost
+        
+        # Convert ObjectId to string
+        product["id"] = str(product.pop("_id"))
+    
+    return {"data": products, "total": len(products)}
+
+
+@app.get("/api/woocommerce/products/{product_id}")
+async def get_woocommerce_product(product_id: str, current=Depends(get_current_user)):
+    """Get single WooCommerce product with details."""
+    product = await db.woo_products.find_one(scope_q(current, {"_id": oid(product_id)}))
+    if not product:
+        raise HTTPException(404, "Produit non trouvé")
+    
+    # Enrich with supplier data
+    if product.get("supplierProductId"):
+        supplier_product = await db.supplier_products.find_one({
+            "_id": oid(product["supplierProductId"])
+        })
+        if supplier_product:
+            product["supplierProduct"] = supplier_product
+    
+    product["id"] = str(product.pop("_id"))
+    return product
+
+
+@app.post("/api/woocommerce/products/{product_id}/map-supplier")
+async def map_supplier_to_woo_product(
+    product_id: str,
+    payload: WooProductMapRequest,
+    current=Depends(get_current_user)
+):
+    """Map a supplier product to a WooCommerce product."""
+    # Get WooCommerce product
+    woo_product = await db.woo_products.find_one(scope_q(current, {"_id": oid(product_id)}))
+    if not woo_product:
+        raise HTTPException(404, "Produit WooCommerce non trouvé")
+    
+    # Get supplier product
+    supplier_product = await db.supplier_products.find_one(
+        scope_q(current, {"_id": oid(payload.supplier_product_id)})
+    )
+    if not supplier_product:
+        raise HTTPException(404, "Produit fournisseur non trouvé")
+    
+    # Update mapping
+    await db.woo_products.update_one(
+        {"_id": oid(product_id)},
+        {
+            "$set": {
+                "supplierProductId": payload.supplier_product_id,
+                "supplierId": supplier_product.get("supplierId"),
+                "fulfillmentType": payload.fulfillment_type,
+                "marginMode": payload.margin_mode,
+                "targetMarginPct": payload.target_margin_pct,
+                "extraCosts": payload.extra_costs,
+                "updatedAt": utc_now(),
+            }
+        }
+    )
+    
+    return {"success": True, "message": "Mapping créé avec succès"}
+
+
+@app.delete("/api/woocommerce/products/{product_id}/unmap-supplier")
+async def unmap_supplier_from_woo_product(product_id: str, current=Depends(get_current_user)):
+    """Remove supplier mapping from WooCommerce product."""
+    result = await db.woo_products.update_one(
+        scope_q(current, {"_id": oid(product_id)}),
+        {
+            "$unset": {
+                "supplierProductId": "",
+                "supplierId": "",
+            },
+            "$set": {"updatedAt": utc_now()}
+        }
+    )
+    
+    if result.matched_count == 0:
+        raise HTTPException(404, "Produit non trouvé")
+    
+    return {"success": True, "message": "Mapping supprimé"}
+
+
+@app.put("/api/woocommerce/products/{product_id}")
+async def update_woocommerce_product(
+    product_id: str,
+    payload: WooProductUpdateRequest,
+    current=Depends(get_current_user)
+):
+    """Update WooCommerce product and optionally sync to WooCommerce."""
+    # Get product
+    product = await db.woo_products.find_one(scope_q(current, {"_id": oid(product_id)}))
+    if not product:
+        raise HTTPException(404, "Produit non trouvé")
+    
+    # Prepare update data
+    update_data = {"updatedAt": utc_now()}
+    woo_update_data = {}
+    
+    if payload.name is not None:
+        update_data["name"] = payload.name
+        woo_update_data["name"] = payload.name
+    
+    if payload.description is not None:
+        update_data["description"] = payload.description
+        woo_update_data["description"] = payload.description
+    
+    if payload.short_description is not None:
+        update_data["short_description"] = payload.short_description
+        woo_update_data["short_description"] = payload.short_description
+    
+    if payload.regular_price is not None:
+        update_data["regular_price"] = payload.regular_price
+        update_data["price"] = payload.regular_price
+        woo_update_data["regular_price"] = payload.regular_price
+    
+    if payload.sale_price is not None:
+        update_data["sale_price"] = payload.sale_price
+        if payload.sale_price:
+            update_data["price"] = payload.sale_price
+        woo_update_data["sale_price"] = payload.sale_price
+    
+    if payload.stock_quantity is not None:
+        update_data["stock_quantity"] = payload.stock_quantity
+        woo_update_data["stock_quantity"] = payload.stock_quantity
+    
+    if payload.stock_status is not None:
+        update_data["stock_status"] = payload.stock_status
+        woo_update_data["stock_status"] = payload.stock_status
+    
+    if payload.images is not None:
+        update_data["images"] = payload.images
+        woo_update_data["images"] = payload.images
+    
+    # Update local database
+    await db.woo_products.update_one(
+        {"_id": oid(product_id)},
+        {"$set": update_data}
+    )
+    
+    # Sync to WooCommerce if requested
+    if payload.sync_to_woo and woo_update_data:
+        try:
+            # Get WooCommerce credentials
+            store_doc = await db.stores.find_one(scope_q(current))
+            if not store_doc:
+                raise HTTPException(404, "Aucune boutique WooCommerce configurée")
+            
+            creds = {
+                "url": store_doc.get("apiUrl"),
+                "key": store_doc.get("apiKey"),
+                "secret": store_doc.get("apiSecret"),
+            }
+            
+            # Update on WooCommerce
+            response = await wc.wc_put(
+                f"/wp-json/wc/v3/products/{product['wooProductId']}",
+                woo_update_data,
+                creds
+            )
+            
+            if response.status_code not in (200, 201):
+                raise HTTPException(400, f"Erreur WooCommerce: {response.text}")
+            
+            return {
+                "success": True,
+                "message": "Produit mis à jour localement et sur WooCommerce",
+                "synced_to_woo": True
+            }
+        except Exception as e:
+            return {
+                "success": True,
+                "message": f"Produit mis à jour localement. Erreur sync WooCommerce: {str(e)}",
+                "synced_to_woo": False
+            }
+    
+    return {"success": True, "message": "Produit mis à jour localement"}
+
+
+
 # ========== API KEYS (scoped external access — Claude, n8n, etc.) ==========
 class ApiKeyCreate(BaseModel):
     name: str

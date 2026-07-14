@@ -10,6 +10,7 @@ import ImportCatalog from "./pages/ImportCatalog";
 import PricingRules from "./pages/PricingRules";
 import Orders from "./pages/Orders";
 import WooCommerce from "./pages/WooCommerce";
+import WooProducts from "./pages/WooProducts";
 import Notifications from "./pages/Notifications";
 import Automations from "./pages/Automations";
 import ApiKeys from "./pages/ApiKeys";
@@ -45,6 +46,7 @@ export default function App() {
           <Route path="/regles-prix" element={<PrivateRoute><PricingRules /></PrivateRoute>} />
           <Route path="/commandes" element={<PrivateRoute><Orders /></PrivateRoute>} />
           <Route path="/woocommerce" element={<PrivateRoute><WooCommerce /></PrivateRoute>} />
+          <Route path="/produits-boutique" element={<PrivateRoute><WooProducts /></PrivateRoute>} />
           <Route path="/automatisations" element={<PrivateRoute><Automations /></PrivateRoute>} />
           <Route path="/cles-api" element={<PrivateRoute><ApiKeys /></PrivateRoute>} />
           <Route path="/boutiques" element={<PrivateRoute><Stores /></PrivateRoute>} />

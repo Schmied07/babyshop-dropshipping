@@ -240,3 +240,81 @@ class CatalogImportJob(BaseDocument):
     errors: List[str] = []
     status: str = "pending"  # pending | processing | completed | failed
     createdAt: datetime = Field(default_factory=utc_now)
+
+
+
+# ---------- WooCommerce Products ----------
+class WooProductVariation(BaseModel):
+    """WooCommerce product variation."""
+    id: int
+    sku: Optional[str] = None
+    price: str
+    regular_price: str
+    sale_price: Optional[str] = None
+    stock_quantity: Optional[int] = None
+    attributes: List[dict] = []
+    image: Optional[dict] = None
+    
+class WooProduct(BaseDocument):
+    """WooCommerce product stored locally with supplier mapping."""
+    wooProductId: int  # WooCommerce product ID
+    sku: str
+    name: str
+    slug: str
+    type: str  # simple, variable, grouped, external
+    status: str  # publish, draft, pending
+    price: str
+    regular_price: str
+    sale_price: Optional[str] = None
+    stock_quantity: Optional[int] = None
+    manage_stock: bool = False
+    stock_status: str = "instock"  # instock, outofstock, onbackorder
+    description: str = ""
+    short_description: str = ""
+    images: List[dict] = []
+    categories: List[dict] = []
+    tags: List[dict] = []
+    variations: List[WooProductVariation] = []
+    
+    # Supplier mapping
+    supplierProductId: Optional[str] = None  # ID du produit fournisseur mappé
+    supplierId: Optional[str] = None
+    
+    # Business logic
+    fulfillmentType: str = "dropshipping"  # dropshipping | stock
+    marginMode: str = "auto"  # auto | manual
+    targetMarginPct: Optional[float] = None  # Si mode manuel
+    extraCosts: float = 0.0  # Frais supplémentaires (stockage, réexpédition)
+    
+    # Calculated fields
+    supplierCost: Optional[float] = None
+    calculatedMargin: Optional[float] = None
+    calculatedMarginPct: Optional[float] = None
+    
+    # Metadata
+    ownerId: Optional[str] = None
+    lastSyncAt: Optional[datetime] = None
+    createdAt: datetime = Field(default_factory=utc_now)
+    updatedAt: datetime = Field(default_factory=utc_now)
+
+
+class WooProductMapRequest(BaseModel):
+    """Request to map WooCommerce product to supplier product."""
+    supplier_product_id: str
+    fulfillment_type: str = "dropshipping"  # dropshipping | stock
+    margin_mode: str = "auto"  # auto | manual
+    target_margin_pct: Optional[float] = None
+    extra_costs: float = 0.0
+
+
+class WooProductUpdateRequest(BaseModel):
+    """Request to update WooCommerce product."""
+    name: Optional[str] = None
+    description: Optional[str] = None
+    short_description: Optional[str] = None
+    regular_price: Optional[str] = None
+    sale_price: Optional[str] = None
+    stock_quantity: Optional[int] = None
+    stock_status: Optional[str] = None
+    images: Optional[List[dict]] = None
+    sync_to_woo: bool = True  # Push changes to WooCommerce

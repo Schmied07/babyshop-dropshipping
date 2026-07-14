@@ -15,6 +15,7 @@ const links = [
   { to: "/", label: "Tableau de bord", icon: ChartLineUp, testid: "nav-dashboard" },
   { to: "/commandes", label: "Commandes", icon: ShoppingBag, testid: "nav-orders" },
   { to: "/catalogue", label: "Catalogue", icon: Package, testid: "nav-catalog" },
+  { to: "/produits-boutique", label: "Produits Boutique", icon: Storefront, testid: "nav-woo-products" },
   { to: "/fournisseurs", label: "Fournisseurs", icon: Storefront, testid: "nav-suppliers" },
   { to: "/import", label: "Import catalogue", icon: DownloadSimple, testid: "nav-import" },
   { to: "/regles-prix", label: "Règles de prix", icon: Percent, testid: "nav-pricing" },
