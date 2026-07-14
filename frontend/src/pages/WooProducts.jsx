@@ -2,7 +2,8 @@ import { useState, useEffect } from "react";
 import { Card } from "../components/Bits";
 import {
   Package, ArrowsClockwise, LinkSimple, Pencil, Trash, ShoppingCart,
-  TrendUp, Clock, CurrencyEur, Check, X, MagnifyingGlass, CaretUp, CaretDown
+  TrendUp, Clock, CurrencyEur, Check, X, MagnifyingGlass, CaretUp, CaretDown,
+  CaretRight, CaretDown as CaretDownIcon
 } from "@phosphor-icons/react";
 import api from "../lib/api";
 import { toast } from "sonner";
@@ -249,33 +250,49 @@ export default function WooProducts() {
             </thead>
             <tbody>
               {products.map((product) => (
-                <tr key={product.id} className="border-b-2 border-blue-700 hover:bg-blue-700/30 bg-blue-900/20">
-                  {/* Produit */}
-                  <td className="p-3 max-w-xs">
-                    <div className="flex items-center gap-2">
-                      {product.images && product.images.length > 0 && (
-                        <img
-                          src={product.images[0].src}
-                          alt={product.name}
-                          className="w-10 h-10 rounded-lg object-cover border-2 border-blue-500/30 flex-shrink-0 shadow"
-                        />
-                      )}
-                      <div className="flex-1 min-w-0">
-                        <div 
-                          className="text-white! font-black text-lg leading-tight truncate drop-shadow-lg cursor-help" 
-                          style={{color: 'white !important'}}
-                          title={product.name || "Sans nom"}
-                        >
-                          {product.name || <span className="text-yellow-300! italic font-black text-lg" style={{color: '#fde047 !important'}}>Sans nom</span>}
-                        </div>
-                        {product.type === "variable" && (
-                          <div className="text-blue-400 text-[10px] font-bold mt-0.5 bg-blue-500/10 px-1.5 py-0.5 rounded inline-block">
-                            {product.variations?.length || 0} var.
-                          </div>
+                <>
+                  <tr key={product.id} className="border-b-2 border-blue-700 hover:bg-blue-700/30 bg-blue-900/20">
+                    {/* Produit */}
+                    <td className="p-3 max-w-xs">
+                      <div className="flex items-center gap-2">
+                        {/* Chevron pour produits variables */}
+                        {product.type === "variable" && product.variations && product.variations.length > 0 && (
+                          <button
+                            onClick={() => toggleExpand(product.id)}
+                            className="p-1 hover:bg-blue-600/50 rounded transition flex-shrink-0"
+                            title={expandedProducts.has(product.id) ? "Masquer variations" : "Afficher variations"}
+                          >
+                            {expandedProducts.has(product.id) ? (
+                              <CaretDownIcon size={18} weight="bold" className="text-blue-300" />
+                            ) : (
+                              <CaretRight size={18} weight="bold" className="text-blue-300" />
+                            )}
+                          </button>
                         )}
+                        
+                        {product.images && product.images.length > 0 && (
+                          <img
+                            src={product.images[0].src}
+                            alt={product.name}
+                            className="w-10 h-10 rounded-lg object-cover border-2 border-blue-500/30 flex-shrink-0 shadow"
+                          />
+                        )}
+                        <div className="flex-1 min-w-0">
+                          <div 
+                            className="text-white! font-black text-lg leading-tight truncate drop-shadow-lg cursor-help" 
+                            style={{color: 'white !important'}}
+                            title={product.name || "Sans nom"}
+                          >
+                            {product.name || <span className="text-yellow-300! italic font-black text-lg" style={{color: '#fde047 !important'}}>Sans nom</span>}
+                          </div>
+                          {product.type === "variable" && (
+                            <div className="text-blue-400 text-[10px] font-bold mt-0.5 bg-blue-500/10 px-1.5 py-0.5 rounded inline-block">
+                              {product.variations?.length || 0} var.
+                            </div>
+                          )}
+                        </div>
                       </div>
-                    </div>
-                  </td>
+                    </td>
                   
                   {/* SKU */}
                   <td className="p-3">
@@ -380,6 +397,98 @@ export default function WooProducts() {
                     </div>
                   </td>
                 </tr>
+                
+                {/* Variations extensibles */}
+                {expandedProducts.has(product.id) && product.variations && product.variations.length > 0 && (
+                  product.variations.map((variation, idx) => (
+                    <tr key={`${product.id}-var-${variation.id}`} className="bg-blue-800/30 border-b border-blue-700/50">
+                      {/* Nom variation */}
+                      <td className="p-3 pl-12">
+                        <div className="flex items-center gap-2">
+                          {variation.image && (
+                            <img
+                              src={variation.image.src}
+                              alt="Variation"
+                              className="w-8 h-8 rounded object-cover border border-blue-400/30 flex-shrink-0"
+                            />
+                          )}
+                          <div className="flex-1 min-w-0">
+                            <div className="text-white text-sm font-bold" style={{color: 'white !important'}}>
+                              Variation {idx + 1}
+                            </div>
+                            {variation.attributes && variation.attributes.length > 0 && (
+                              <div className="text-blue-300 text-xs">
+                                {variation.attributes.map(attr => `${attr.name}: ${attr.option}`).join(" • ")}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </td>
+                      
+                      {/* SKU */}
+                      <td className="p-3">
+                        <div className="text-white text-xs font-mono bg-blue-700/50 px-2 py-1 rounded inline-block" style={{color: 'white !important'}}>
+                          {variation.sku || "-"}
+                        </div>
+                      </td>
+                      
+                      {/* Prix */}
+                      <td className="p-3 text-right">
+                        <div className="text-white font-bold text-sm" style={{color: 'white !important'}}>
+                          {fmtEUR(parseFloat(variation.price || 0))}
+                        </div>
+                      </td>
+                      
+                      {/* Fournisseur */}
+                      <td className="p-3">
+                        {variation.supplierMappings && variation.supplierMappings.length > 0 ? (
+                          <div className="text-white text-xs" style={{color: 'white !important'}}>
+                            {variation.supplierMappings.length} mappé(s)
+                          </div>
+                        ) : (
+                          <span className="text-yellow-300 text-xs font-bold" style={{color: '#fde047 !important'}}>Non mappé</span>
+                        )}
+                      </td>
+                      
+                      {/* Amazon */}
+                      <td className="p-3 text-center">
+                        <span className="text-blue-400 text-xs">-</span>
+                      </td>
+                      
+                      {/* Marge */}
+                      <td className="p-3 text-right">
+                        <span className="text-blue-400 text-xs">-</span>
+                      </td>
+                      
+                      {/* Stock */}
+                      <td className="p-3 text-center">
+                        <span className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold ${
+                          variation.stock_status === "instock" ? "bg-green-600 text-white" : "bg-red-600 text-white"
+                        }`}>
+                          {variation.stock_quantity || 0}
+                        </span>
+                      </td>
+                      
+                      {/* Actions */}
+                      <td className="p-3">
+                        <div className="flex items-center justify-center gap-1">
+                          <button
+                            onClick={() => {
+                              // TODO: Ouvrir modal pour mapper cette variation
+                              setSelectedProduct({...product, selectedVariation: variation});
+                              setShowMapModal(true);
+                            }}
+                            className="p-1 bg-blue-600 hover:bg-blue-700 rounded text-white text-xs"
+                            title="Mapper cette variation"
+                          >
+                            <LinkSimple size={14} weight="bold" />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))
+                )}
+                </>
               ))}
             </tbody>
           </table>
