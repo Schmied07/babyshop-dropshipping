@@ -191,29 +191,29 @@ export default function WooProducts() {
 
       {/* Stats */}
       {products.length > 0 && (
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          <Card className="bg-gradient-to-br from-blue-500 to-blue-600 border-0 shadow-lg">
-            <div className="text-white text-sm font-bold mb-1 uppercase tracking-wide">Total produits</div>
-            <div className="text-4xl font-black text-white">{products.length}</div>
-          </Card>
-          <Card className="bg-gradient-to-br from-green-500 to-green-600 border-0 shadow-lg">
-            <div className="text-white text-sm font-bold mb-1 uppercase tracking-wide">Mappés</div>
-            <div className="text-4xl font-black text-white">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div className="relative overflow-hidden bg-gradient-to-br from-blue-500 to-blue-600 border-0 shadow-lg rounded p-5">
+            <div className="text-white text-[11px] font-bold uppercase tracking-wide opacity-90">Total produits</div>
+            <div className="text-white text-3xl font-black mt-2">{products.length}</div>
+          </div>
+          <div className="relative overflow-hidden bg-gradient-to-br from-green-500 to-green-600 border-0 shadow-lg rounded p-5">
+            <div className="text-white text-[11px] font-bold uppercase tracking-wide opacity-90">Mappés</div>
+            <div className="text-white text-3xl font-black mt-2">
               {products.filter(p => p.supplierProductId || (p.supplierMappings && p.supplierMappings.length > 0)).length}
             </div>
-          </Card>
-          <Card className="bg-gradient-to-br from-orange-500 to-orange-600 border-0 shadow-lg">
-            <div className="text-white text-sm font-bold mb-1 uppercase tracking-wide">Dropshipping</div>
-            <div className="text-4xl font-black text-white">
+          </div>
+          <div className="relative overflow-hidden bg-gradient-to-br from-orange-500 to-orange-600 border-0 shadow-lg rounded p-5">
+            <div className="text-white text-[11px] font-bold uppercase tracking-wide opacity-90">Dropshipping</div>
+            <div className="text-white text-3xl font-black mt-2">
               {products.filter(p => p.fulfillmentType === "dropshipping").length}
             </div>
-          </Card>
-          <Card className="bg-gradient-to-br from-purple-500 to-purple-600 border-0 shadow-lg">
-            <div className="text-white text-sm font-bold mb-1 uppercase tracking-wide">Stock</div>
-            <div className="text-4xl font-black text-white">
+          </div>
+          <div className="relative overflow-hidden bg-gradient-to-br from-purple-500 to-purple-600 border-0 shadow-lg rounded p-5">
+            <div className="text-white text-[11px] font-bold uppercase tracking-wide opacity-90">Stock</div>
+            <div className="text-white text-3xl font-black mt-2">
               {products.filter(p => p.fulfillmentType === "stock").length}
             </div>
-          </Card>
+          </div>
         </div>
       )}
 
