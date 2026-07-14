@@ -18,6 +18,7 @@ load_dotenv()
 from models import (  # noqa: E402
     Supplier, Product, SupplierProduct, PricingRule, Order,
     Notification, ProductMapping, UserLogin, UserRegister, UserPublic,
+    WooProduct, WooProductMapRequest, WooProductUpdateRequest,
     utc_now,
 )
 from auth import (  # noqa: E402
