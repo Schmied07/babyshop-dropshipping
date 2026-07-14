@@ -1728,6 +1728,10 @@ async def _get_woocommerce_credentials(current: dict) -> dict:
         )
     
     return {
+        "url": api_url,
+        "key": api_key,
+        "secret": api_secret,
+    }
 
 
 @app.post("/api/woocommerce/products/test-connection")
@@ -1766,12 +1770,6 @@ async def test_woocommerce_connection(current=Depends(get_current_user)):
             "error": "Erreur de connexion",
             "message": str(e)
         }
-
-
-        "url": api_url,
-        "key": api_key,
-        "secret": api_secret,
-    }
 
 
 @app.post("/api/woocommerce/products/sync")
