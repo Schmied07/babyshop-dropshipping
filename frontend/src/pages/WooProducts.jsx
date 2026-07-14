@@ -20,6 +20,9 @@ export default function WooProducts() {
   const [showEditModal, setShowEditModal] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState(null);
   
+  // State for expanded variations
+  const [expandedProducts, setExpandedProducts] = useState(new Set());
+  
   // Load products
   useEffect(() => {
     loadProducts();
@@ -68,6 +71,16 @@ export default function WooProducts() {
   const openEditModal = (product) => {
     setSelectedProduct(product);
     setShowEditModal(true);
+  };
+
+  const toggleExpand = (productId) => {
+    const newExpanded = new Set(expandedProducts);
+    if (newExpanded.has(productId)) {
+      newExpanded.delete(productId);
+    } else {
+      newExpanded.add(productId);
+    }
+    setExpandedProducts(newExpanded);
   };
 
   const handleUnmap = async (productId) => {

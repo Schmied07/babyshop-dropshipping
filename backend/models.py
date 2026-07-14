@@ -252,8 +252,13 @@ class WooProductVariation(BaseModel):
     regular_price: str
     sale_price: Optional[str] = None
     stock_quantity: Optional[int] = None
+    stock_status: str = "instock"
     attributes: List[dict] = []
     image: Optional[dict] = None
+    
+    # Variation-specific mappings
+    supplierMappings: List[dict] = []  # Can have its own supplier mappings
+    supplierProductId: Optional[str] = None  # Legacy single mapping
 
 
 class SupplierMapping(BaseModel):

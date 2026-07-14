@@ -2229,6 +2229,73 @@ async def reorder_supplier_mappings(
     }
 
 
+@app.post("/api/woocommerce/products/{product_id}/variations/{variation_id}/map-supplier")
+async def map_variation_to_supplier(
+    product_id: str,
+    variation_id: int,
+    payload: WooProductMapRequest,
+    current=Depends(get_current_user)
+):
+    """Map a specific product variation to a supplier."""
+    # Get product
+    woo_product = await db.woo_products.find_one(scope_q(current, {"_id": oid(product_id)}))
+    if not woo_product:
+        raise HTTPException(404, "Produit WooCommerce non trouvé")
+    
+    if woo_product.get("type") != "variable":
+        raise HTTPException(400, "Ce produit n'a pas de variations")
+    
+    # Get supplier product
+    supplier_product = await db.supplier_products.find_one(
+        scope_q(current, {"_id": oid(payload.supplier_product_id)})
+    )
+    if not supplier_product:
+        raise HTTPException(404, "Produit fournisseur non trouvé")
+    
+    # Find the variation
+    variations = woo_product.get("variations", [])
+    variation_idx = None
+    for idx, var in enumerate(variations):
+        if var.get("id") == variation_id:
+            variation_idx = idx
+            break
+    
+    if variation_idx is None:
+        raise HTTPException(404, "Variation non trouvée")
+    
+    # Create mapping for this variation
+    new_mapping = SupplierMapping(
+        supplierProductId=payload.supplier_product_id,
+        supplierId=supplier_product.get("supplierId"),
+        priority=1,  # First mapping for this variation
+        fulfillmentType=payload.fulfillment_type,
+        marginMode=payload.margin_mode,
+        targetMarginPct=payload.target_margin_pct,
+        extraCosts=payload.extra_costs,
+        isActive=True,
+        addedAt=utc_now()
+    ).model_dump()
+    
+    # Update variation with mapping
+    if "supplierMappings" not in variations[variation_idx]:
+        variations[variation_idx]["supplierMappings"] = []
+    
+    variations[variation_idx]["supplierMappings"].append(new_mapping)
+    
+    # Update in DB
+    await db.woo_products.update_one(
+        {"_id": oid(product_id)},
+        {
+            "$set": {
+                "variations": variations,
+                "updatedAt": utc_now()
+            }
+        }
+    )
+    
+    return {"success": True, "message": "Variation mappée avec succès"}
+
+
 @app.post("/api/woocommerce/products/{product_id}/set-asin")
 async def set_product_asin(
     product_id: str,
