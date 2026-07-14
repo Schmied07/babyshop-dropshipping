@@ -1,0 +1,45 @@
+{
+  "summary": "Frontend-only test of WooProducts UI redesign (no-grey / vivid colors). Login with admin@creook.fr/@Thibaut0629 FAILED (stays on /login). Fallback qa.tester@europadrop-qa.fr login succeeded. WooProducts page reached, header blue-gradient icon confirmed. However QA Tester has 0 products so table header, badges, action buttons, 'Non mappé' text, SKU pill, product images and the 4 colored stats cards are NOT rendered and could NOT be visually verified. Empty state and filter zone still show grey (zinc) styling, contradicting 'no gris' directive.",
+  "tested_scope": ["frontend"],
+  "passed": [
+    "Login flow (with qa.tester fallback) works",
+    "Navigation to /produits-boutique works",
+    "Header icon container has blue gradient: from-blue-500 to-blue-600 (line ~90)",
+    "One blue-gradient element detected (header icon)"
+  ],
+  "failed": [
+    {
+      "area": "auth/credentials",
+      "issue": "Login with admin@creook.fr / @Thibaut0629 (credentials given in review request) fails — page stays on /login. Seed admin admin@marcherbien.fr/Admin1234! also fails on this Atlas preview. Only qa.tester works.",
+      "evidence": "URL after submit still /login for both admin accounts",
+      "priority": "HIGH"
+    },
+    {
+      "area": "test coverage / data",
+      "issue": "Cannot verify 7/9 requested UI items (table header blue gradient, Stock badges, Actions buttons, 'Non mappé' blue text, SKU blue-tint bg, product image blue border, 4 colored stats cards). QA Tester operator sees 0 products so table + stats block (conditionally rendered when products.length>0) never mount.",
+      "evidence": "tbody tr count=0; stats grid not rendered; empty state shown ('Aucun produit...')",
+      "priority": "HIGH"
+    },
+    {
+      "area": "UI — grey still present",
+      "issue": "Directive was 'je ne veux voir de gris'. Multiple grey classes remain visible: 'Tester connexion' button bg-zinc-700 (line 122), filter search input bg-zinc-800 border-zinc-700 (line 141), search magnifier button bg-zinc-700 (line 145), select dropdowns bg-zinc-800 (lines 156,168), empty state text-zinc-500/400/600 (lines 209-214), table row hover bg-zinc-800/50 and border-zinc-800 (line 234).",
+      "evidence": "Screenshot of empty WooProducts page shows grey filter bar and grey empty-state text/icon",
+      "priority": "MEDIUM"
+    },
+    {
+      "area": "UI — layout overlap",
+      "issue": "Header title 'Produits Boutique WooCommerce' visually overlaps with the subtitle / filter card in the initial screenshot (may relate to original bug 'écritures sortent du cadre'). Needs main-agent visual review.",
+      "evidence": ".screenshots/wooproducts_top.png — h1 appears to bleed into filter card area",
+      "priority": "MEDIUM"
+    }
+  ],
+  "action_items": [
+    "Fix admin@creook.fr login OR update /app/memory/test_credentials.md with correct working admin creds so full UI can be tested with real product data.",
+    "To validate the colored table/stats redesign, either (a) seed products for QA Tester or (b) provide working admin credentials with existing products.",
+    "Replace remaining bg-zinc-*/text-zinc-* on filters, 'Tester connexion' button, and empty state with vivid colors per 'no gris' directive.",
+    "Investigate header/subtitle overlap with filters Card (possible mt spacing / z-index)."
+  ],
+  "success_rate": {"backend": "not tested", "frontend": "30% (2/9 items verifiable given data)"},
+  "retest_needed": true,
+  "full_testing_deferred": true
+}

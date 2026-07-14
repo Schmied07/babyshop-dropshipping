@@ -84,13 +84,15 @@ export default function WooProducts() {
   return (
     <div className="space-y-6" data-testid="woo-products-page">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-3xl font-bold text-white flex items-center gap-3">
-            <ShoppingCart size={32} weight="bold" className="text-blue-400" />
+            <div className="p-2 bg-gradient-to-br from-blue-500 to-blue-600 rounded-lg shadow-lg">
+              <ShoppingCart size={32} weight="bold" className="text-white" />
+            </div>
             Produits Boutique WooCommerce
           </h1>
-          <p className="text-zinc-300 text-base mt-2">
+          <p className="text-white text-base mt-2 font-medium">
             Gérez vos produits WooCommerce et mappez-les aux fournisseurs
           </p>
         </div>
@@ -176,25 +178,25 @@ export default function WooProducts() {
       {/* Stats */}
       {products.length > 0 && (
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          <Card className="bg-blue-500/10 border-blue-500/30">
-            <div className="text-xs text-zinc-400 mb-1">Total produits</div>
-            <div className="text-2xl font-bold text-blue-400">{products.length}</div>
+          <Card className="bg-gradient-to-br from-blue-500 to-blue-600 border-0 shadow-lg">
+            <div className="text-white text-sm font-semibold mb-1">Total produits</div>
+            <div className="text-3xl font-bold text-white">{products.length}</div>
           </Card>
-          <Card className="bg-green-500/10 border-green-500/30">
-            <div className="text-xs text-zinc-400 mb-1">Mappés</div>
-            <div className="text-2xl font-bold text-green-400">
-              {products.filter(p => p.supplierProductId).length}
+          <Card className="bg-gradient-to-br from-green-500 to-green-600 border-0 shadow-lg">
+            <div className="text-white text-sm font-semibold mb-1">Mappés</div>
+            <div className="text-3xl font-bold text-white">
+              {products.filter(p => p.supplierProductId || (p.supplierMappings && p.supplierMappings.length > 0)).length}
             </div>
           </Card>
-          <Card className="bg-orange-500/10 border-orange-500/30">
-            <div className="text-xs text-zinc-400 mb-1">Dropshipping</div>
-            <div className="text-2xl font-bold text-orange-400">
+          <Card className="bg-gradient-to-br from-orange-500 to-orange-600 border-0 shadow-lg">
+            <div className="text-white text-sm font-semibold mb-1">Dropshipping</div>
+            <div className="text-3xl font-bold text-white">
               {products.filter(p => p.fulfillmentType === "dropshipping").length}
             </div>
           </Card>
-          <Card className="bg-purple-500/10 border-purple-500/30">
-            <div className="text-xs text-zinc-400 mb-1">Stock</div>
-            <div className="text-2xl font-bold text-purple-400">
+          <Card className="bg-gradient-to-br from-purple-500 to-purple-600 border-0 shadow-lg">
+            <div className="text-white text-sm font-semibold mb-1">Stock</div>
+            <div className="text-3xl font-bold text-white">
               {products.filter(p => p.fulfillmentType === "stock").length}
             </div>
           </Card>
@@ -216,15 +218,15 @@ export default function WooProducts() {
           <div className="overflow-x-auto">
             <table className="w-full text-sm min-w-[900px]">
               <thead>
-              <tr className="border-b border-zinc-700 bg-zinc-800/50">
-                <th className="text-left p-3 text-zinc-200 font-bold text-xs uppercase tracking-wide w-64">Produit</th>
-                <th className="text-left p-3 text-zinc-200 font-bold text-xs uppercase tracking-wide w-32">SKU</th>
-                <th className="text-right p-3 text-zinc-200 font-bold text-xs uppercase tracking-wide w-24">Prix</th>
-                <th className="text-left p-3 text-zinc-200 font-bold text-xs uppercase tracking-wide w-40">Fournisseur</th>
-                <th className="text-center p-3 text-zinc-200 font-bold text-xs uppercase tracking-wide w-24">Amazon</th>
-                <th className="text-right p-3 text-zinc-200 font-bold text-xs uppercase tracking-wide w-28">Marge</th>
-                <th className="text-center p-3 text-zinc-200 font-bold text-xs uppercase tracking-wide w-20">Stock</th>
-                <th className="text-center p-3 text-zinc-200 font-bold text-xs uppercase tracking-wide w-20">Actions</th>
+              <tr className="bg-gradient-to-r from-blue-600 to-blue-700">
+                <th className="text-left p-3 text-white font-bold text-xs uppercase tracking-wide w-64">Produit</th>
+                <th className="text-left p-3 text-white font-bold text-xs uppercase tracking-wide w-32">SKU</th>
+                <th className="text-right p-3 text-white font-bold text-xs uppercase tracking-wide w-24">Prix</th>
+                <th className="text-left p-3 text-white font-bold text-xs uppercase tracking-wide w-40">Fournisseur</th>
+                <th className="text-center p-3 text-white font-bold text-xs uppercase tracking-wide w-24">Amazon</th>
+                <th className="text-right p-3 text-white font-bold text-xs uppercase tracking-wide w-28">Marge</th>
+                <th className="text-center p-3 text-white font-bold text-xs uppercase tracking-wide w-20">Stock</th>
+                <th className="text-center p-3 text-white font-bold text-xs uppercase tracking-wide w-20">Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -237,15 +239,15 @@ export default function WooProducts() {
                         <img
                           src={product.images[0].src}
                           alt={product.name}
-                          className="w-10 h-10 rounded object-cover border border-zinc-700 flex-shrink-0"
+                          className="w-10 h-10 rounded-lg object-cover border-2 border-blue-500/30 flex-shrink-0 shadow"
                         />
                       )}
                       <div className="flex-1 min-w-0">
-                        <div className="text-white font-semibold text-xs leading-tight truncate">
-                          {product.name || <span className="text-zinc-500 italic">Sans nom</span>}
+                        <div className="text-white font-bold text-sm leading-tight truncate">
+                          {product.name || <span className="text-blue-400 italic">Sans nom</span>}
                         </div>
                         {product.type === "variable" && (
-                          <div className="text-blue-400 text-[10px] font-medium mt-0.5">
+                          <div className="text-blue-400 text-[10px] font-bold mt-0.5 bg-blue-500/10 px-1.5 py-0.5 rounded inline-block">
                             {product.variations?.length || 0} var.
                           </div>
                         )}
@@ -255,14 +257,14 @@ export default function WooProducts() {
                   
                   {/* SKU */}
                   <td className="p-3">
-                    <div className="text-zinc-300 text-[10px] font-mono font-semibold truncate">
+                    <div className="text-white text-[11px] font-mono font-bold truncate bg-blue-500/10 px-2 py-1 rounded inline-block">
                       {product.sku || "-"}
                     </div>
                   </td>
                   
                   {/* Prix */}
                   <td className="p-3 text-right">
-                    <div className="text-white font-bold text-xs">
+                    <div className="text-white font-bold text-sm">
                       {fmtEUR(parseFloat(product.price || 0))}
                     </div>
                   </td>
@@ -270,16 +272,16 @@ export default function WooProducts() {
                   {/* Fournisseur (simplifié) */}
                   <td className="p-3">
                     {product.supplierMappings && product.supplierMappings.length > 0 ? (
-                      <div className="flex items-center gap-1">
-                        <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-blue-500/20 text-blue-400 border border-blue-500/40">
+                      <div className="flex items-center gap-1.5">
+                        <span className="px-2 py-1 rounded-md text-[10px] font-bold bg-gradient-to-r from-blue-500 to-blue-600 text-white shadow">
                           {product.supplierMappings.length}
                         </span>
-                        <span className="text-zinc-300 text-[10px] truncate">fournisseur{product.supplierMappings.length > 1 ? 's' : ''}</span>
+                        <span className="text-white text-[10px] font-semibold truncate">fournisseur{product.supplierMappings.length > 1 ? 's' : ''}</span>
                       </div>
                     ) : product.supplierProduct ? (
-                      <div className="text-[10px] text-zinc-400 truncate">Mappé (legacy)</div>
+                      <div className="text-[10px] text-blue-400 font-semibold truncate">Mappé</div>
                     ) : (
-                      <span className="text-zinc-500 text-[10px]">-</span>
+                      <span className="text-blue-400 text-[10px] font-medium">Non mappé</span>
                     )}
                   </td>
                   
@@ -287,13 +289,13 @@ export default function WooProducts() {
                   <td className="p-3 text-center">
                     {product.amazonData?.asin ? (
                       <div className="text-[10px]">
-                        <div className="text-blue-400 font-mono font-bold">{product.amazonData.asin}</div>
+                        <div className="text-orange-400 font-mono font-bold bg-orange-500/10 px-1.5 py-0.5 rounded">{product.amazonData.asin}</div>
                         {product.amazonData.currentPrice && (
-                          <div className="text-green-400 font-semibold">{fmtEUR(product.amazonData.currentPrice)}</div>
+                          <div className="text-green-400 font-bold mt-0.5">{fmtEUR(product.amazonData.currentPrice)}</div>
                         )}
                       </div>
                     ) : (
-                      <span className="text-zinc-500 text-xs">-</span>
+                      <span className="text-blue-400 text-xs font-medium">-</span>
                     )}
                   </td>
                   
@@ -301,28 +303,28 @@ export default function WooProducts() {
                   <td className="p-3 text-right">
                     {product.calculatedMargin !== undefined ? (
                       <div className="text-[10px]">
-                        <div className={`font-bold ${
+                        <div className={`font-bold text-sm ${
                           product.calculatedMargin > 0 ? "text-green-400" : "text-red-400"
                         }`}>
                           {fmtEUR(product.calculatedMargin)}
                         </div>
-                        <div className={`text-[9px] ${
+                        <div className={`text-[10px] font-bold ${
                           product.calculatedMarginPct > 0 ? "text-green-400" : "text-red-400"
                         }`}>
                           {product.calculatedMarginPct?.toFixed(1)}%
                         </div>
                       </div>
                     ) : (
-                      <span className="text-zinc-500 text-xs">-</span>
+                      <span className="text-blue-400 text-xs font-medium">-</span>
                     )}
                   </td>
                   
                   {/* Stock */}
                   <td className="p-3 text-center">
-                    <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold ${
+                    <span className={`inline-flex items-center px-2 py-1 rounded-lg text-[11px] font-bold shadow ${
                       product.stock_status === "instock"
-                        ? "bg-green-500/20 text-green-400"
-                        : "bg-red-500/20 text-red-400"
+                        ? "bg-gradient-to-r from-green-500 to-green-600 text-white"
+                        : "bg-gradient-to-r from-red-500 to-red-600 text-white"
                     }`}>
                       {product.stock_quantity || 0}
                     </span>
@@ -333,7 +335,7 @@ export default function WooProducts() {
                     <div className="flex items-center justify-center gap-1">
                       <button
                         onClick={() => openMapModal(product)}
-                        className="p-1 hover:bg-zinc-700 rounded text-green-400"
+                        className="p-1.5 bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 rounded-lg text-white shadow-lg transition"
                         title="Gérer"
                       >
                         <LinkSimple size={16} weight="bold" />
