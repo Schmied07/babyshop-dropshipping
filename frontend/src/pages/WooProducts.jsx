@@ -213,104 +213,83 @@ export default function WooProducts() {
             </p>
           </div>
         ) : (
-          <table className="w-full text-sm">
-            <thead>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm min-w-[900px]">
+              <thead>
               <tr className="border-b border-zinc-700 bg-zinc-800/50">
-                <th className="text-left p-3 text-zinc-200 font-bold text-xs uppercase tracking-wide">Produit</th>
-                <th className="text-left p-3 text-zinc-200 font-bold text-xs uppercase tracking-wide">SKU</th>
-                <th className="text-right p-3 text-zinc-200 font-bold text-xs uppercase tracking-wide">Prix vente</th>
-                <th className="text-left p-3 text-zinc-200 font-bold text-xs uppercase tracking-wide">Fournisseurs</th>
-                <th className="text-left p-3 text-zinc-200 font-bold text-xs uppercase tracking-wide">Amazon</th>
-                <th className="text-right p-3 text-zinc-200 font-bold text-xs uppercase tracking-wide">Marge</th>
-                <th className="text-center p-3 text-zinc-200 font-bold text-xs uppercase tracking-wide">Type</th>
-                <th className="text-center p-3 text-zinc-200 font-bold text-xs uppercase tracking-wide">Stock</th>
-                <th className="text-center p-3 text-zinc-200 font-bold text-xs uppercase tracking-wide">Actions</th>
+                <th className="text-left p-3 text-zinc-200 font-bold text-xs uppercase tracking-wide w-64">Produit</th>
+                <th className="text-left p-3 text-zinc-200 font-bold text-xs uppercase tracking-wide w-32">SKU</th>
+                <th className="text-right p-3 text-zinc-200 font-bold text-xs uppercase tracking-wide w-24">Prix</th>
+                <th className="text-left p-3 text-zinc-200 font-bold text-xs uppercase tracking-wide w-40">Fournisseur</th>
+                <th className="text-center p-3 text-zinc-200 font-bold text-xs uppercase tracking-wide w-24">Amazon</th>
+                <th className="text-right p-3 text-zinc-200 font-bold text-xs uppercase tracking-wide w-28">Marge</th>
+                <th className="text-center p-3 text-zinc-200 font-bold text-xs uppercase tracking-wide w-20">Stock</th>
+                <th className="text-center p-3 text-zinc-200 font-bold text-xs uppercase tracking-wide w-20">Actions</th>
               </tr>
             </thead>
             <tbody>
               {products.map((product) => (
                 <tr key={product.id} className="border-b border-zinc-800 hover:bg-zinc-800/50">
-                  <td className="p-3">
-                    <div className="flex items-center gap-3">
+                  {/* Produit */}
+                  <td className="p-3 max-w-xs">
+                    <div className="flex items-center gap-2">
                       {product.images && product.images.length > 0 && (
                         <img
                           src={product.images[0].src}
                           alt={product.name}
-                          className="w-12 h-12 rounded object-cover border border-zinc-700"
+                          className="w-10 h-10 rounded object-cover border border-zinc-700 flex-shrink-0"
                         />
                       )}
                       <div className="flex-1 min-w-0">
-                        <div className="text-white font-semibold text-sm leading-tight truncate">
+                        <div className="text-white font-semibold text-xs leading-tight truncate">
                           {product.name || <span className="text-zinc-500 italic">Sans nom</span>}
                         </div>
                         {product.type === "variable" && (
-                          <div className="text-blue-400 text-xs font-medium mt-1">
-                            {product.variations?.length || 0} variation{product.variations?.length > 1 ? 's' : ''}
+                          <div className="text-blue-400 text-[10px] font-medium mt-0.5">
+                            {product.variations?.length || 0} var.
                           </div>
                         )}
                       </div>
                     </div>
                   </td>
-                  <td className="p-3 text-zinc-300 text-xs font-mono font-semibold">{product.sku || "-"}</td>
-                  <td className="p-3 text-right text-white font-medium">
-                    {fmtEUR(parseFloat(product.price || 0))}
+                  
+                  {/* SKU */}
+                  <td className="p-3">
+                    <div className="text-zinc-300 text-[10px] font-mono font-semibold truncate">
+                      {product.sku || "-"}
+                    </div>
                   </td>
                   
-                  {/* Fournisseurs (multiples) */}
+                  {/* Prix */}
+                  <td className="p-3 text-right">
+                    <div className="text-white font-bold text-xs">
+                      {fmtEUR(parseFloat(product.price || 0))}
+                    </div>
+                  </td>
+                  
+                  {/* Fournisseur (simplifié) */}
                   <td className="p-3">
                     {product.supplierMappings && product.supplierMappings.length > 0 ? (
-                      <div className="space-y-1">
-                        {product.supplierMappings.slice(0, 2).map((mapping, idx) => (
-                          <div key={idx} className="text-xs flex items-center gap-2">
-                            <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${
-                              mapping.priority === 1 
-                                ? "bg-blue-500/20 text-blue-400 border border-blue-500/40"
-                                : "bg-zinc-700 text-zinc-400"
-                            }`}>
-                              {mapping.priority === 1 ? "Principal" : `Alt. ${mapping.priority - 1}`}
-                            </span>
-                            <span className="text-zinc-300 truncate text-[11px]">
-                              {mapping.supplierName || "Fournisseur"}
-                            </span>
-                          </div>
-                        ))}
-                        {product.supplierMappings.length > 2 && (
-                          <div className="text-[10px] text-zinc-500 font-medium">
-                            +{product.supplierMappings.length - 2} autre(s)
-                          </div>
-                        )}
+                      <div className="flex items-center gap-1">
+                        <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-blue-500/20 text-blue-400 border border-blue-500/40">
+                          {product.supplierMappings.length}
+                        </span>
+                        <span className="text-zinc-300 text-[10px] truncate">fournisseur{product.supplierMappings.length > 1 ? 's' : ''}</span>
                       </div>
                     ) : product.supplierProduct ? (
-                      <div className="text-xs">
-                        <div className="text-white font-semibold text-[11px]">{product.supplierProduct.name}</div>
-                        <div className="text-zinc-400 font-medium mt-0.5 text-[10px]">
-                          Coût: {fmtEUR(product.supplierProduct.costPrice)}
-                        </div>
-                      </div>
+                      <div className="text-[10px] text-zinc-400 truncate">Mappé (legacy)</div>
                     ) : (
-                      <span className="text-zinc-500 text-xs font-medium">Non mappé</span>
+                      <span className="text-zinc-500 text-[10px]">-</span>
                     )}
                   </td>
                   
-                  {/* Amazon */}
-                  <td className="p-3">
+                  {/* Amazon (simplifié) */}
+                  <td className="p-3 text-center">
                     {product.amazonData?.asin ? (
-                      <div className="text-xs space-y-1">
-                        <div className="flex items-center gap-1.5">
-                          <span className="text-[10px] text-zinc-500 font-mono">ASIN:</span>
-                          <span className="text-[10px] text-blue-400 font-mono font-semibold">{product.amazonData.asin}</span>
-                        </div>
+                      <div className="text-[10px]">
+                        <div className="text-blue-400 font-mono font-bold">{product.amazonData.asin}</div>
                         {product.amazonData.currentPrice && (
-                          <div className="text-zinc-300 font-medium text-[11px]">
-                            Amazon: {fmtEUR(product.amazonData.currentPrice)}
-                          </div>
-                        )}
-                        {product.amazonMargin !== null && product.amazonMargin !== undefined && (
-                          <div className={`font-semibold text-[10px] ${
-                            product.amazonMargin > 0 ? "text-green-400" : "text-red-400"
-                          }`}>
-                            Marge: {fmtEUR(product.amazonMargin)} ({product.amazonMarginPct?.toFixed(1)}%)
-                          </div>
+                          <div className="text-green-400 font-semibold">{fmtEUR(product.amazonData.currentPrice)}</div>
                         )}
                       </div>
                     ) : (
@@ -318,16 +297,16 @@ export default function WooProducts() {
                     )}
                   </td>
                   
-                  {/* Marge fournisseur */}
+                  {/* Marge */}
                   <td className="p-3 text-right">
                     {product.calculatedMargin !== undefined ? (
-                      <div className="text-xs">
-                        <div className={`font-semibold ${
+                      <div className="text-[10px]">
+                        <div className={`font-bold ${
                           product.calculatedMargin > 0 ? "text-green-400" : "text-red-400"
                         }`}>
                           {fmtEUR(product.calculatedMargin)}
                         </div>
-                        <div className={`${
+                        <div className={`text-[9px] ${
                           product.calculatedMarginPct > 0 ? "text-green-400" : "text-red-400"
                         }`}>
                           {product.calculatedMarginPct?.toFixed(1)}%
@@ -338,51 +317,34 @@ export default function WooProducts() {
                     )}
                   </td>
                   
-                  {/* Type */}
-                  <td className="p-3 text-center">
-                    <span className={`inline-flex items-center px-2 py-1 rounded text-xs font-semibold ${
-                      product.fulfillmentType === "dropshipping"
-                        ? "bg-orange-500/20 text-orange-400 border border-orange-500/30"
-                        : "bg-purple-500/20 text-purple-400 border border-purple-500/30"
-                    }`}>
-                      {product.fulfillmentType === "dropshipping" ? "Dropship" : "Stock"}
-                    </span>
-                  </td>
-                  
                   {/* Stock */}
                   <td className="p-3 text-center">
-                    <span className={`inline-flex items-center px-2 py-1 rounded text-xs font-semibold ${
+                    <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold ${
                       product.stock_status === "instock"
-                        ? "bg-green-500/20 text-green-400 border border-green-500/30"
-                        : "bg-red-500/20 text-red-400 border border-red-500/30"
+                        ? "bg-green-500/20 text-green-400"
+                        : "bg-red-500/20 text-red-400"
                     }`}>
                       {product.stock_quantity || 0}
                     </span>
                   </td>
+                  
+                  {/* Actions */}
                   <td className="p-3">
-                    <div className="flex items-center justify-center gap-1.5">
+                    <div className="flex items-center justify-center gap-1">
                       <button
                         onClick={() => openMapModal(product)}
-                        className="p-1.5 hover:bg-zinc-700 rounded text-green-400"
-                        title="Gérer fournisseurs & Amazon"
+                        className="p-1 hover:bg-zinc-700 rounded text-green-400"
+                        title="Gérer"
                       >
-                        <LinkSimple size={18} weight="bold" />
+                        <LinkSimple size={16} weight="bold" />
                       </button>
-                      {(product.supplierProductId || (product.supplierMappings && product.supplierMappings.length > 0)) && (
-                        <button
-                          onClick={() => openEditModal(product)}
-                          className="p-1.5 hover:bg-zinc-700 rounded text-blue-400"
-                          title="Modifier produit"
-                        >
-                          <Pencil size={18} weight="bold" />
-                        </button>
-                      )}
                     </div>
                   </td>
                 </tr>
               ))}
             </tbody>
           </table>
+          </div>
         )}
       </Card>
 
